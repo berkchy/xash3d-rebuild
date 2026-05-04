@@ -71,6 +71,29 @@ static float		packet_loss;
 static float		packet_choke;
 static float		framerate = 0.0;
 static int		maxmsgbytes = 0;
+static qboolean		netgraph_has_live_data;
+
+static qboolean NetGraph_HasLiveData( void )
+{
+	return cls.state >= ca_connected && cls.state != ca_cinematic;
+}
+
+static void NetGraph_ResetData( void )
+{
+	int i;
+
+	memset( netstat_packet_latency, 0, sizeof( netstat_packet_latency ));
+	memset( netstat_cmdinfo, 0, sizeof( netstat_cmdinfo ));
+	memset( netstat_graph, 0, sizeof( netstat_graph ));
+
+	for( i = 0; i < ARRAYSIZE( netstat_cmdinfo ); i++ )
+		netstat_cmdinfo[i].sent = true;
+
+	packet_loss = 0.0f;
+	packet_choke = 0.0f;
+	maxmsgbytes = 0;
+	netgraph_has_live_data = false;
+}
 
 /*
 ==========
@@ -178,6 +201,15 @@ static void NetGraph_GetFrameData( float *latency, int *latency_count )
 
 	*latency_count = 0;
 	*latency = 0.0f;
+
+	if( !NetGraph_HasLiveData( ))
+	{
+		if( netgraph_has_live_data )
+			NetGraph_ResetData();
+		return;
+	}
+
+	netgraph_has_live_data = true;
 
 	if( newtime >= nexttime )
 	{
@@ -649,10 +681,7 @@ void SCR_DrawNetGraph( void )
 	kbutton_t *in_graph;
 	int   graphtype;
 
-	if( !host.allow_console )
-		return;
-
-	if( cls.state != ca_active )
+	if( cls.state == ca_cinematic )
 		return;
 
 	in_graph = clgame.dllFuncs.KB_Find( "in_graph" );
@@ -698,5 +727,6 @@ void CL_InitNetgraph( void )
 	Cvar_RegisterVariable( &net_graphsolid );
 	packet_loss = packet_choke = 0.0;
 
+	NetGraph_ResetData();
 	NetGraph_InitColors();
 }

@@ -533,7 +533,8 @@ void V_PostRender( void )
 		SCR_NetSpeeds();
 		SCR_DrawPos();
 		SCR_DrawEnts();
-		SCR_DrawNetGraph();
+		if( cls.state == ca_active && cls.key_dest != key_menu )
+			SCR_DrawNetGraph();
 		SCR_DrawUserCmd();
 		SV_DrawOrthoTriangles();
 		CL_DrawDemoRecording();
@@ -542,6 +543,8 @@ void V_PostRender( void )
 		R_ShowTree();
 		Con_DrawConsole();
 		UI_UpdateMenu( host.realtime );
+		if( cls.state != ca_active || cls.key_dest == key_menu )
+			SCR_DrawNetGraph();
 		Con_DrawVersion();
 		Con_DrawDebug(); // must be last
 		Touch_Draw();

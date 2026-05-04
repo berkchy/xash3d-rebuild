@@ -75,9 +75,9 @@ CVAR_DEFINE_AUTO( fps_override, "0", FCVAR_FILTERABLE, "unlock higher framerate 
 static CVAR_DEFINE_AUTO( host_framerate, "0", FCVAR_FILTERABLE, "locks frame timing to this value in seconds" );
 static CVAR_DEFINE( host_sleeptime, "sleeptime", "1", FCVAR_ARCHIVE|FCVAR_FILTERABLE, "milliseconds to sleep for each frame. higher values reduce fps accuracy" );
 static CVAR_DEFINE_AUTO( host_sleeptime_debug, "0", 0, "print sleeps between frames" );
-static CVAR_DEFINE_AUTO( cl_skipframes, "0", FCVAR_ARCHIVE, "skip rendering every N frames to reduce GPU load" );
+static CVAR_DEFINE_AUTO( cl_skipframes, "1", FCVAR_ARCHIVE, "skip rendering every N frames to reduce GPU load" );
 static CVAR_DEFINE_AUTO( cl_skipframes_adaptive, "0", FCVAR_ARCHIVE, "enable adaptive frame skipping when FPS drops below threshold" );
-static CVAR_DEFINE_AUTO( cl_skipframes_threshold, "30", FCVAR_ARCHIVE, "FPS threshold used by adaptive frame skipping" );
+static CVAR_DEFINE_AUTO( cl_skipframes_threshold, "72", FCVAR_ARCHIVE, "FPS threshold used by adaptive frame skipping" );
 CVAR_DEFINE_AUTO( host_allow_materials, "0", FCVAR_LATCH|FCVAR_ARCHIVE, "allow texture replacements from materials/ folder" );
 CVAR_DEFINE( con_gamemaps, "con_mapfilter", "1", FCVAR_ARCHIVE, "when true show only maps in game folder" );
 
@@ -1274,6 +1274,9 @@ int EXPORT Host_Main( int argc, char **argv, const char *progname, int bChangeGa
 	Cvar_RegisterVariable( &host_framerate );
 	Cvar_RegisterVariable( &host_sleeptime );
 	Cvar_RegisterVariable( &host_sleeptime_debug );
+	Cvar_RegisterVariable( &cl_skipframes );
+	Cvar_RegisterVariable( &cl_skipframes_adaptive );
+	Cvar_RegisterVariable( &cl_skipframes_threshold );
 	Cvar_RegisterVariable( &host_gameloaded );
 	Cvar_RegisterVariable( &host_clientloaded );
 	Cvar_RegisterVariable( &host_limitlocal );
