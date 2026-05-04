@@ -25,7 +25,14 @@ get_ffmpeg_archive()
 		B="$GH_CPU_ARCH"
 	fi
 
-	FLAVOR=lgpl-shared-minimal
+	# FWGS latest Windows x64 shared builds are currently published without
+	# the "minimal" suffix, while the other targets still use the minimal
+	# variant naming.
+	if [ "$GH_CPU_OS" = "win32" ] && [ "$GH_CPU_ARCH" = "amd64" ]; then
+		FLAVOR=lgpl-shared
+	else
+		FLAVOR=lgpl-shared-minimal
+	fi
 
 	echo "ffmpeg-n$FFMPEG_VERSION-latest-$A$B-$FLAVOR-$FFMPEG_VERSION"
 }

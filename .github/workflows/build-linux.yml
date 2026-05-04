@@ -1,0 +1,63 @@
+name: Linux Builds
+on:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux build specifically want oldest Ubuntu as possible
+          # to be crossdistribution compatible, otherwise use ubuntu-latest
+          - os: ubuntu-22.04
+            targetos: linux
+            targetarch: amd64
+          - os: ubuntu-22.04
+            targetos: linux
+            targetarch: i386
+          - os: ubuntu-22.04
+            targetos: linux
+            targetarch: arm64
+            cross: true
+          - os: ubuntu-22.04
+            targetos: linux
+            targetarch: armhf
+            cross: true
+          - os: ubuntu-24.04 # riscv64 would benefit from having latest compilers
+            targetos: linux
+            targetarch: riscv64
+            cross: true
+          - os: ubuntu-22.04
+            targetos: linux
+            targetarch: ppc64el
+            cross: true
+#          - os: ubuntu-aarch64-22.04
+#            targetos: linux
+#            targetarch: aarch64
+#          - os: ubuntu-latest
+#            targetos: linux
+#            targetarch: e2k-8c
+#            cross: true
+    env:
+      SDL_VERSION: 2.32.10
+      FFMPEG_VERSION: 7.1
+      GH_CPU_ARCH: ${{ matrix.targetarch }}
+      GH_CPU_OS: ${{ matrix.targetos }}
+      GH_CROSSCOMPILING: ${{ matrix.cross }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: bash scripts/gha/deps_${{ matrix.targetos }}.sh
+      - name: Build engine
+        run: bash scripts/gha/build_${{ matrix.targetos }}.sh
+      - name: Upload engine (artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-${{ matrix.targetos }}-${{ matrix.targetarch }}
+          path: artifacts/*

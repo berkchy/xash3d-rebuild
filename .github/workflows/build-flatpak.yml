@@ -1,0 +1,25 @@
+name: Flatpak Builds
+on:
+  workflow_call:
+
+jobs:
+  flatpak:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        include:
+          - app: su.xash.Engine.Compat.i386
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      options: --privileged
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build flatpak (Compat.i386)
+        uses: FWGS/flatpak-github-actions/flatpak-builder@v6.5
+        with:
+          bundle: ${{ matrix.app }}.flatpak
+          manifest-path: scripts/flatpak/${{ matrix.app }}.yml

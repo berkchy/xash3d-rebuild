@@ -17,8 +17,9 @@ rm pkgconf.tar*
 mv mingw64 pkgconf
 
 FFMPEG_ARCHIVE=$(get_ffmpeg_archive)
-curl -L https://github.com/FWGS/FFmpeg-Builds/releases/download/latest/$FFMPEG_ARCHIVE.zip -o ffmpeg.zip
-if [ -f ffmpeg.zip ]; then
-	unzip -x ffmpeg.zip
-	mv $FFMPEG_ARCHIVE ffmpeg
-fi
+FFMPEG_URL=https://github.com/FWGS/FFmpeg-Builds/releases/download/latest/$FFMPEG_ARCHIVE.zip
+curl -fL "$FFMPEG_URL" -o ffmpeg.zip || die
+unzip -q ffmpeg.zip || die
+FFMPEG_DIR=$(find . -maxdepth 1 -type d -name 'ffmpeg-*' ! -name 'ffmpeg' | head -n1)
+[ -n "$FFMPEG_DIR" ] || die
+mv "$FFMPEG_DIR" ffmpeg || die

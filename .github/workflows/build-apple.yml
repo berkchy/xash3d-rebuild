@@ -1,0 +1,38 @@
+name: Apple Builds
+on:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14 # arm64 as per github documentation
+            targetos: apple
+            targetarch: arm64
+          - os: macos-13 # x86 as per github documentation (will they fix it before they deprecate this version?..)
+            targetos: apple
+            targetarch: amd64
+    env:
+      SDL_VERSION: 2.32.10
+      FFMPEG_VERSION: 7.1
+      GH_CPU_ARCH: ${{ matrix.targetarch }}
+      GH_CPU_OS: ${{ matrix.targetos }}
+      GH_CROSSCOMPILING: ${{ matrix.cross }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: bash scripts/gha/deps_${{ matrix.targetos }}.sh
+      - name: Build engine
+        run: bash scripts/gha/build_${{ matrix.targetos }}.sh
+      - name: Upload engine (artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-${{ matrix.targetos }}-${{ matrix.targetarch }}
+          path: artifacts/*

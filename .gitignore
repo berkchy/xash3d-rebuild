@@ -310,6 +310,7 @@ _Pvt_Extensions
 
 # QtCreator
 build-*
+!.github/workflows/build-*.yml
 
 # Android
 *.apk

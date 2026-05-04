@@ -1,0 +1,37 @@
+name: Build & Deploy Engine
+on: [push, pull_request]
+
+jobs:
+  linux:
+    name: Linux Builds
+    uses: ./.github/workflows/build-linux.yml
+    secrets: inherit
+
+  platforms:
+    name: Platform Builds
+    uses: ./.github/workflows/build-platforms.yml
+    secrets: inherit
+
+  windows:
+    name: Windows Builds
+    uses: ./.github/workflows/build-win32.yml
+    secrets: inherit
+
+  apple:
+    name: Apple Builds
+    uses: ./.github/workflows/build-apple.yml
+    secrets: inherit
+
+  flatpak:
+    name: Flatpak Builds
+    uses: ./.github/workflows/build-flatpak.yml
+
+  release:
+    name: Upload Releases
+    if: ${{ github.event_name == 'push' }}
+    needs: [linux, platforms, windows, apple, flatpak]
+    permissions:
+      actions: read
+      contents: write
+    uses: ./.github/workflows/build-release.yml
+    secrets: inherit
