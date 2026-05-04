@@ -33,7 +33,7 @@ GNU General Public License for more details.
 #define NETGRAPH_NET_COLORS		5
 #define NUM_LATENCY_SAMPLES		8
 
-CVAR_DEFINE_AUTO( net_graph, "0", FCVAR_ARCHIVE, "draw network usage graph" );
+CVAR_DEFINE_AUTO( net_graph, "0", FCVAR_ARCHIVE, "draw network usage graph (mode 4: Source-style panel)" );
 static CVAR_DEFINE_AUTO( net_graphpos, "1", FCVAR_ARCHIVE, "network usage graph position" );
 static CVAR_DEFINE_AUTO( net_scale, "5", FCVAR_ARCHIVE, "network usage graph scale level" );
 static CVAR_DEFINE_AUTO( net_graphwidth, "192", FCVAR_ARCHIVE, "network usage graph width" );
@@ -70,8 +70,15 @@ static netbandwidthgraph_t	netstat_graph[NET_TIMINGS];
 static float		packet_loss;
 static float		packet_choke;
 static float		framerate = 0.0;
+static float		netgraph_client_frame_avg;
+static float		netgraph_client_frame_var;
+static float		netgraph_server_frame_avg;
+static float		netgraph_server_frame_var;
 static int		maxmsgbytes = 0;
+static int		netgraph_lastout;
 static qboolean		netgraph_has_live_data;
+
+static void NetGraph_DrawRect( const wrect_t *rect, const byte colors[4] );
 
 static qboolean NetGraph_HasLiveData( void )
 {
@@ -91,8 +98,259 @@ static void NetGraph_ResetData( void )
 
 	packet_loss = 0.0f;
 	packet_choke = 0.0f;
+	framerate = 0.0f;
+	netgraph_client_frame_avg = 0.0f;
+	netgraph_client_frame_var = 0.0f;
+	netgraph_server_frame_avg = 0.0f;
+	netgraph_server_frame_var = 0.0f;
 	maxmsgbytes = 0;
+	netgraph_lastout = 0;
 	netgraph_has_live_data = false;
+}
+
+static float NetGraph_NormalizeLatency( float avg, int count )
+{
+	float normalized_count = (float)count - ( host.frametime * FRAMERATE_AVG_FRAC );
+
+	if( count <= 0 )
+		return 0.0f;
+
+	avg /= Q_max( normalized_count, 1.0f );
+
+	if( cl_updaterate.value > 0.0f )
+		avg -= 1000.0f / cl_updaterate.value;
+
+	return Q_max( avg, 0.0f );
+}
+
+static float NetGraph_GetServerFrameTime( void )
+{
+	float server_frame;
+
+	if( !NetGraph_HasLiveData( ) || cl.mtime[0] <= 0.0 || cl.mtime[1] <= 0.0 )
+		return 0.0f;
+
+	server_frame = cl_serverframetime();
+
+	if( server_frame <= 0.0f || server_frame > 1.0f )
+		return 0.0f;
+
+	return server_frame;
+}
+
+static void NetGraph_UpdateTimingStats( void )
+{
+	float client_frame = host.frametime;
+	float server_frame = NetGraph_GetServerFrameTime();
+
+	framerate = FRAMERATE_AVG_FRAC * client_frame + ( 1.0f - FRAMERATE_AVG_FRAC ) * framerate;
+
+	if( netgraph_client_frame_avg == 0.0f )
+		netgraph_client_frame_avg = client_frame;
+	else netgraph_client_frame_avg = FRAMERATE_AVG_FRAC * client_frame + ( 1.0f - FRAMERATE_AVG_FRAC ) * netgraph_client_frame_avg;
+
+	netgraph_client_frame_var = FRAMERATE_AVG_FRAC * fabs( client_frame - netgraph_client_frame_avg ) +
+		( 1.0f - FRAMERATE_AVG_FRAC ) * netgraph_client_frame_var;
+
+	if( server_frame <= 0.0f )
+	{
+		netgraph_server_frame_avg = 0.0f;
+		netgraph_server_frame_var = 0.0f;
+		return;
+	}
+
+	if( netgraph_server_frame_avg == 0.0f )
+		netgraph_server_frame_avg = server_frame;
+	else netgraph_server_frame_avg = FRAMERATE_AVG_FRAC * server_frame + ( 1.0f - FRAMERATE_AVG_FRAC ) * netgraph_server_frame_avg;
+
+	netgraph_server_frame_var = FRAMERATE_AVG_FRAC * fabs( server_frame - netgraph_server_frame_avg ) +
+		( 1.0f - FRAMERATE_AVG_FRAC ) * netgraph_server_frame_var;
+}
+
+static int NetGraph_GetLastOutgoingSize( void )
+{
+	int i = ( cls.netchan.outgoing_sequence - 1 ) & NET_TIMINGS_MASK;
+	int out = netstat_cmdinfo[i].size;
+
+	if( !out )
+		return netgraph_lastout;
+
+	netgraph_lastout = out;
+	return out;
+}
+
+static const rgba_t *NetGraph_GetMetricColor( float value, float warn, float bad )
+{
+	static const rgba_t good = { 235, 235, 235, 255 };
+	static const rgba_t caution = { 255, 196, 92, 255 };
+	static const rgba_t danger = { 255, 108, 108, 255 };
+
+	if( bad > warn && value >= bad )
+		return &danger;
+	if( warn > 0.0f && value >= warn )
+		return &caution;
+	return &good;
+}
+
+static const rgba_t *NetGraph_GetLossColor( int value )
+{
+	static const rgba_t good = { 235, 235, 235, 255 };
+	static const rgba_t caution = { 255, 196, 92, 255 };
+	static const rgba_t danger = { 255, 108, 108, 255 };
+
+	if( value >= 5 )
+		return &danger;
+	if( value > 0 )
+		return &caution;
+	return &good;
+}
+
+static const char *NetGraph_GetConnectionLabel( void )
+{
+	if( !NetGraph_HasLiveData( ))
+		return "offline";
+	if( NET_IsLocalAddress( cls.netchan.remote_address ) || Host_IsLocalGame( ))
+		return "local";
+	return "online";
+}
+
+static const rgba_t *NetGraph_GetConnectionColor( const char *connection_label )
+{
+	static const rgba_t offline = { 176, 176, 176, 255 };
+	static const rgba_t local = { 132, 230, 148, 255 };
+	static const rgba_t online = { 132, 200, 255, 255 };
+
+	if( !Q_strcmp( connection_label, "local" ))
+		return &local;
+	if( !Q_strcmp( connection_label, "online" ))
+		return &online;
+	return &offline;
+}
+
+static int NetGraph_DrawStatPair( cl_font_t *font, int x, int y, const char *label, const char *value, const rgba_t value_color )
+{
+	static const rgba_t label_color = { 150, 150, 150, 255 };
+	int label_width = 0;
+
+	CL_DrawString( x, y, label, label_color, font, FONT_DRAW_NORENDERMODE );
+	CL_DrawStringLen( font, label, &label_width, NULL, 0 );
+
+	return label_width + CL_DrawString( x + label_width + 4, y, value, value_color, font, FONT_DRAW_NORENDERMODE );
+}
+
+static void NetGraph_GetSourceScreenPos( wrect_t *rect, cl_font_t *font, int *x, int *y, int *w, int *h )
+{
+	int panel_width = Q_max( 320, (int)net_graphwidth.value );
+	int font_height = font && font->valid ? font->charHeight : 12;
+
+	rect->left = rect->top = 0;
+	rect->right = refState.width;
+	rect->bottom = refState.height;
+
+	*w = Q_min( rect->right - 10, panel_width );
+	*h = font_height * 3 + 18;
+
+	switch( (int)net_graphpos.value )
+	{
+	case 1:
+		*x = rect->left + rect->right - 5 - *w;
+		break;
+	case 2:
+		*x = ( rect->left + ( rect->right - 10 - *w )) / 2;
+		break;
+	default:
+		*x = rect->left + 5;
+		break;
+	}
+
+	*y = rect->bottom - *h - 6;
+}
+
+static void NetGraph_DrawSourceStyle( float avg_ping )
+{
+	static const byte bg_outer[4] = { 20, 20, 20, 180 };
+	static const byte bg_inner[4] = { 8, 8, 8, 200 };
+	cl_font_t *font = Con_GetFont( 0 );
+	wrect_t rect, outline, fill;
+	char value[32];
+	const char *connection_label = NetGraph_GetConnectionLabel();
+	float server_frame = NetGraph_GetServerFrameTime();
+	float fps = framerate > 0.0f ? 1.0f / framerate : 0.0f;
+	float tickrate = server_frame > 0.0f ? 1.0f / server_frame : cl_updaterate.value;
+	int panel_x, panel_y, panel_w, panel_h;
+	int content_x, content_y, column_w;
+	int loss = bound( 0, (int)(( packet_loss + PACKETLOSS_AVG_FRAC ) - 0.01f ), 100 );
+	int choke = bound( 0, (int)(( packet_choke + PACKETCHOKE_AVG_FRAC ) - 0.01f ), 100 );
+	int in = netstat_graph[cls.netchan.incoming_sequence & NET_TIMINGS_MASK].msgbytes;
+	int kb_in = (int)cls.netchan.flow[FLOW_INCOMING].avgkbytespersec;
+	int row_step;
+
+	if( !font || !font->valid )
+		return;
+
+	NetGraph_GetSourceScreenPos( &rect, font, &panel_x, &panel_y, &panel_w, &panel_h );
+
+	outline.left = panel_x;
+	outline.top = panel_y;
+	outline.right = panel_w;
+	outline.bottom = panel_h;
+
+	fill.left = panel_x + 1;
+	fill.top = panel_y + 1;
+	fill.right = panel_w - 2;
+	fill.bottom = panel_h - 2;
+
+	ref.dllFuncs.GL_SetRenderMode( kRenderTransColor );
+	ref.dllFuncs.GL_Bind( XASH_TEXTURE0, R_GetBuiltinTexture( REF_WHITE_TEXTURE ) );
+	ref.dllFuncs.Begin( TRI_QUADS );
+	NetGraph_DrawRect( &outline, bg_outer );
+	NetGraph_DrawRect( &fill, bg_inner );
+	ref.dllFuncs.End();
+	ref.dllFuncs.Color4ub( 255, 255, 255, 255 );
+	ref.dllFuncs.GL_SetRenderMode( kRenderNormal );
+
+	CL_SetFontRendermode( font );
+
+	content_x = panel_x + 8;
+	content_y = panel_y + 6;
+	column_w = ( panel_w - 16 ) / 4;
+	row_step = font->charHeight + 3;
+
+	Q_snprintf( value, sizeof( value ), "%.0f", fps );
+	NetGraph_DrawStatPair( font, content_x, content_y, "fps:", value, *NetGraph_GetMetricColor( fps > 0.0f ? 300.0f / fps : 999.0f, 16.0f, 33.0f ));
+
+	Q_snprintf( value, sizeof( value ), "%.2f ms", netgraph_client_frame_var * 1000.0f );
+	NetGraph_DrawStatPair( font, content_x + column_w, content_y, "var:", value, *NetGraph_GetMetricColor( netgraph_client_frame_var * 1000.0f, 1.0f, 2.0f ));
+
+	Q_snprintf( value, sizeof( value ), "%.0f ms", avg_ping );
+	NetGraph_DrawStatPair( font, content_x + column_w * 2, content_y, "ping:", value, *NetGraph_GetMetricColor( avg_ping, 60.0f, 100.0f ));
+
+	Q_snprintf( value, sizeof( value ), "%d%%", loss );
+	NetGraph_DrawStatPair( font, content_x + column_w * 3, content_y, "loss:", value, *NetGraph_GetLossColor( loss ));
+
+	Q_snprintf( value, sizeof( value ), "%d%%", choke );
+	NetGraph_DrawStatPair( font, content_x, content_y + row_step, "choke:", value, *NetGraph_GetLossColor( choke ));
+
+	Q_snprintf( value, sizeof( value ), "%.1f", tickrate );
+	NetGraph_DrawStatPair( font, content_x + column_w, content_y + row_step, "tick:", value, *NetGraph_GetMetricColor( tickrate > 0.0f ? 128.0f / tickrate : 999.0f, 2.0f, 8.0f ));
+
+	Q_snprintf( value, sizeof( value ), "%.2f ms", server_frame * 1000.0f );
+	NetGraph_DrawStatPair( font, content_x + column_w * 2, content_y + row_step, "sv:", value, *NetGraph_GetMetricColor( server_frame * 1000.0f, 20.0f, 40.0f ));
+
+	Q_snprintf( value, sizeof( value ), "%.2f ms", netgraph_server_frame_var * 1000.0f );
+	NetGraph_DrawStatPair( font, content_x + column_w * 3, content_y + row_step, "svar:", value, *NetGraph_GetMetricColor( netgraph_server_frame_var * 1000.0f, 1.0f, 2.0f ));
+
+	Q_snprintf( value, sizeof( value ), "%d/s", (int)cl_updaterate.value );
+	NetGraph_DrawStatPair( font, content_x, content_y + row_step * 2, "up:", value, *NetGraph_GetMetricColor( cl_updaterate.value > 0.0f ? 100.0f / cl_updaterate.value : 999.0f, 0.0f, 0.0f ));
+
+	Q_snprintf( value, sizeof( value ), "%d/s", (int)cl_cmdrate.value );
+	NetGraph_DrawStatPair( font, content_x + column_w, content_y + row_step * 2, "cmd:", value, *NetGraph_GetMetricColor( cl_cmdrate.value > 0.0f ? 100.0f / cl_cmdrate.value : 999.0f, 0.0f, 0.0f ));
+
+	Q_snprintf( value, sizeof( value ), "%d / %d", in, kb_in );
+	NetGraph_DrawStatPair( font, content_x + column_w * 2, content_y + row_step * 2, "in:", value, *NetGraph_GetMetricColor( kb_in, 0.0f, 0.0f ));
+
+	Q_snprintf( value, sizeof( value ), "%s", connection_label );
+	NetGraph_DrawStatPair( font, content_x + column_w * 3, content_y + row_step * 2, "net:", value, *NetGraph_GetConnectionColor( connection_label ));
 }
 
 /*
@@ -395,29 +653,15 @@ NetGraph_DrawTextFields
 */
 static void NetGraph_DrawTextFields( int x, int y, int w, wrect_t rect, int count, float avg, int packet_loss, int packet_choke, int graphtype )
 {
-	static int	lastout;
 	cl_font_t *font = Con_GetFont( 0 );
 	rgba_t		colors = { 0.9 * 255, 0.9 * 255, 0.7 * 255, 255 };
 	int		ptx = Q_max( x + w - NETGRAPH_LERP_HEIGHT - 1, 1 );
 	int		pty = Q_max( rect.top + rect.bottom - NETGRAPH_LERP_HEIGHT - 3, 1 );
-	int		out, i = ( cls.netchan.outgoing_sequence - 1 ) & NET_TIMINGS_MASK;
+	int		out;
 	int		j = cls.netchan.incoming_sequence & NET_TIMINGS_MASK;
 	int		last_y = y - net_graphheight.value;
 
-	if( count > 0 )
-	{
-		avg = avg / (float)( count - ( host.frametime * FRAMERATE_AVG_FRAC ));
-
-		if( cl_updaterate.value > 0.0f )
-			avg -= 1000.0f / cl_updaterate.value;
-
-		// can't be below zero
-		avg = Q_max( 0.0f, avg );
-	}
-	else avg = 0.0;
-
-	// move rolling average
-	framerate = FRAMERATE_AVG_FRAC * host.frametime + ( 1.0f - FRAMERATE_AVG_FRAC ) * framerate;
+	(void)count;
 
 	CL_SetFontRendermode( font );
 
@@ -432,9 +676,7 @@ static void NetGraph_DrawTextFields( int x, int y, int w, wrect_t rect, int coun
 
 		y += 15;
 
-		out = netstat_cmdinfo[i].size;
-		if( !out ) out = lastout;
-		else lastout = out;
+		out = NetGraph_GetLastOutgoingSize();
 
 		CL_DrawStringf( font, x, y, colors, FONT_DRAW_NORENDERMODE,
 			"in :  %i %.2f kb/s", netstat_graph[j].msgbytes, cls.netchan.flow[FLOW_INCOMING].avgkbytespersec );
@@ -698,6 +940,14 @@ void SCR_DrawNetGraph( void )
 	NetGraph_GetScreenPos( &rect, &w, &x, &y );
 
 	NetGraph_GetFrameData( &avg_ping, &ping_count );
+	avg_ping = NetGraph_NormalizeLatency( avg_ping, ping_count );
+	NetGraph_UpdateTimingStats();
+
+	if( graphtype == 4 )
+	{
+		NetGraph_DrawSourceStyle( avg_ping );
+		return;
+	}
 
 	NetGraph_DrawTextFields( x, y, w, rect, ping_count, avg_ping, packet_loss, packet_choke, graphtype );
 

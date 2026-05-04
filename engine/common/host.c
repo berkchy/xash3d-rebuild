@@ -71,7 +71,7 @@ static CVAR_DEFINE_AUTO( host_gameloaded, "0", FCVAR_READ_ONLY, "inidcates a loa
 static CVAR_DEFINE_AUTO( host_clientloaded, "0", FCVAR_READ_ONLY, "inidcates a loaded client.dll" );
 CVAR_DEFINE_AUTO( host_limitlocal, "0", 0, "apply cl_cmdrate and rate to loopback connection" );
 CVAR_DEFINE( host_maxfps, "fps_max", "72", FCVAR_ARCHIVE|FCVAR_FILTERABLE, "host fps upper limit" );
-CVAR_DEFINE_AUTO( fps_override, "0", FCVAR_FILTERABLE, "unlock higher framerate values, not supported" );
+CVAR_DEFINE_AUTO( fps_override, "0", FCVAR_FILTERABLE, "legacy compatibility cvar, no longer required to exceed old fps_max limits" );
 static CVAR_DEFINE_AUTO( host_framerate, "0", FCVAR_FILTERABLE, "locks frame timing to this value in seconds" );
 static CVAR_DEFINE( host_sleeptime, "sleeptime", "1", FCVAR_ARCHIVE|FCVAR_FILTERABLE, "milliseconds to sleep for each frame. higher values reduce fps accuracy" );
 static CVAR_DEFINE_AUTO( host_sleeptime_debug, "0", 0, "print sleeps between frames" );
@@ -647,11 +647,7 @@ static double Host_CalcFPS( void )
 	{
 		if( !gl_vsync.value )
 		{
-			double max_fps = fps_override.value ? MAX_FPS_HARD : MAX_FPS_SOFT;
-
 			fps = host_maxfps.value;
-			if( fps == 0.0 ) fps = max_fps;
-			fps = bound( MIN_FPS, fps, max_fps );
 		}
 	}
 #endif
@@ -668,9 +664,6 @@ static qboolean Host_Autosleep( double dt, double scale )
 
 	if( fps <= 0 )
 		return true;
-
-	// limit fps to withing tolerable range
-	fps = bound( MIN_FPS, fps, MAX_FPS_HARD );
 
 	if( Host_IsDedicated( ))
 		targetframetime = ( 1.0 / ( fps + 1.0 ));

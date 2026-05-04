@@ -32,13 +32,31 @@ static CVAR_DEFINE( v_lightgamma, "lightgamma", "2.5", 0, "lightgamma amount" );
 static CVAR_DEFINE( v_brightness, "brightness", "0.0", FCVAR_ARCHIVE, "brightness factor" );
 static CVAR_DEFINE( v_gamma, "gamma", "2.5", FCVAR_ARCHIVE, "gamma amount" );
 
+static double BuildGammaPow( const double value, const double exponent )
+{
+	if( value <= 0.0 )
+	{
+		if( exponent < 0.0 )
+			return 1000000.0;
+		if( exponent == 0.0 )
+			return 1.0;
+		return 0.0;
+	}
+
+	return pow( value, exponent );
+}
+
 static void BuildGammaTable( const float gamma, const float brightness, const float texgamma, const float lightgamma )
 {
 	float g1, g2, g3;
+	float safe_gamma = gamma;
 	int i;
 
-	if( gamma != 0.0 )
-		g1 = 1.0 / gamma;
+	if( safe_gamma == 0.0f )
+		safe_gamma = 0.4f;
+
+	if( safe_gamma != 0.0f )
+		g1 = 1.0 / safe_gamma;
 	else g1 = 0.4;
 
 	g2 = g1 * texgamma;
@@ -52,7 +70,7 @@ static void BuildGammaTable( const float gamma, const float brightness, const fl
 
 	for( i = 0; i < 256; i++ )
 	{
-		double d = pow( i / 255.0, (double)g2 );
+		double d = BuildGammaPow( i / 255.0, (double)g2 );
 		int inf = d * 255.0;
 		texgammatable[i] = bound( 0, inf, 255 );
 	}
@@ -60,7 +78,7 @@ static void BuildGammaTable( const float gamma, const float brightness, const fl
 	for( i = 0; i < 1024; i++ )
 	{
 		double d;
-		float f = pow( i / 1023.0, (double)lightgamma );
+		float f = BuildGammaPow( i / 1023.0, (double)lightgamma );
 		int inf;
 
 		if( brightness > 1.0 )
@@ -71,37 +89,14 @@ static void BuildGammaTable( const float gamma, const float brightness, const fl
 		else
 			f = (( f - g3 ) / ( 1.0 - g3 )) * 0.875 + 0.125;
 
-		d = pow( (double)f, (double)g1 ); // do not remove the cast, or tests fail
+		d = BuildGammaPow( (double)f, (double)g1 ); // do not remove the cast, or tests fail
 		inf = d * 1023.0;
 		lightgammatable[i] = bound( 0, inf, 1023 );
 
 		// do these calculations in the same loop...
-		lineargammatable[i] = pow( i / 1023.0, (double)gamma ) * 1023.0;
-		screengammatable[i] = pow( i / 1023.0, 1.0 / gamma ) * 1023.0;
+		lineargammatable[i] = BuildGammaPow( i / 1023.0, (double)gamma ) * 1023.0;
+		screengammatable[i] = BuildGammaPow( i / 1023.0, 1.0 / safe_gamma ) * 1023.0;
 	}
-}
-
-static void V_ValidateGammaCvars( void )
-{
-	if( v_gamma.value < 1.8f )
-		Cvar_DirectSet( &v_gamma, "1.8" );
-	else if( v_gamma.value > 3.0f )
-		Cvar_DirectSet( &v_gamma, "3" );
-
-	if( v_texgamma.value < 1.8f )
-		Cvar_DirectSet( &v_texgamma, "1.8" );
-	else if( v_texgamma.value > 3.0f )
-		Cvar_DirectSet( &v_texgamma, "3" );
-
-	if( v_lightgamma.value < 1.8f )
-		Cvar_DirectSet( &v_lightgamma, "1.8" );
-	else if( v_lightgamma.value > 3.0f )
-		Cvar_DirectSet( &v_lightgamma, "3" );
-
-	if( v_brightness.value < 0.0f )
-		Cvar_DirectSet( &v_brightness, "0" );
-	else if( v_brightness.value > 3.0f )
-		Cvar_DirectSet( &v_brightness, "3" );
 }
 
 void V_CheckGamma( void )
@@ -129,8 +124,6 @@ void V_CheckGamma( void )
 
 	if( dirty || FBitSet( v_texgamma.flags|v_lightgamma.flags|v_brightness.flags|v_gamma.flags, FCVAR_CHANGED ))
 	{
-		V_ValidateGammaCvars();
-
 		dirty = false;
 		gamma_rebuilt = true;
 
