@@ -350,6 +350,12 @@ typedef struct host_parm_s
 	string   gamedll;
 	string   clientlib;
 	string   menulib;
+	
+	// Required areas for the Skipframes system
+    float       current_fps;
+    int         skipframe_counter;
+    qboolean    should_skip_frame;
+    int         skipframe_rendered;
 } host_parm_t;
 
 extern host_parm_t	host;
