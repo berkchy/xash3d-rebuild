@@ -4,6 +4,7 @@
 
 # Build engine
 cd $BUILDDIR
+export CARGO_HOME=$PWD/.cargo
 
 WAF_EXTRA_ARGS=""
 

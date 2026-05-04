@@ -3,6 +3,7 @@
 . scripts/lib.sh
 
 cd $GITHUB_WORKSPACE || die
+export CARGO_HOME=$PWD/.cargo
 
 pushd hlsdk || die
 ./waf configure build install --destdir=../bin || die

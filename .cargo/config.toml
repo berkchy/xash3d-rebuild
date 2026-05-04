@@ -1,0 +1,9 @@
+[net]
+git-fetch-with-cli = true
+
+[patch.crates-io]
+# maintui currently depends on the published `csz` crate, but CI can fail when
+# the crates.io index does not expose that package revision. Override it with
+# the upstream git repository so Cargo can fetch it the same way as the other
+# maintui git dependencies.
+csz = { git = "https://github.com/FWGS/csz.git" }

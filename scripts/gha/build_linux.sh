@@ -27,6 +27,7 @@ done
 export PKG_CONFIG_PATH=$PWD/ffmpeg/lib/pkgconfig:${ARCH_TRIPLET[$GH_CPU_ARCH]}
 export CC=${CROSS_COMPILE_CC[$GH_CPU_ARCH]}
 export CXX=${CROSS_COMPILE_CXX[$GH_CPU_ARCH]}
+export CARGO_HOME=$PWD/.cargo
 
 APP=xash3d-fwgs
 APPDIR=$APP.AppDir
