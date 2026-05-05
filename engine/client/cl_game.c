@@ -3787,6 +3787,22 @@ static IVoiceTweak gVoiceApi =
 };
 
 // engine callbacks
+static float GAME_EXPORT CL_SharedRandomFloat( unsigned int seed, float low, float high )
+{
+	unsigned int range;
+
+	U_Srand( (int)seed + *(int *)&low + *(int *)&high );
+
+	U_Random();
+	U_Random();
+
+	range = high - low;
+	if( !range )
+		return low;
+
+	return low + ((float)( U_Random() & 65535 ) / 65536.0f) * range;
+}
+
 static cl_enginefunc_t gEngfuncs =
 {
 	pfnSPR_Load,
@@ -3858,6 +3874,7 @@ static cl_enginefunc_t gEngfuncs =
 	CL_WeaponAnim,
 	COM_RandomFloat,
 	COM_RandomLong,
+	CL_SharedRandomFloat,
 	pfnHookEvent,
 	Con_Visible,
 	pfnGetGameDirectory,

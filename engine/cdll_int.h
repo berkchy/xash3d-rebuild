@@ -211,6 +211,7 @@ typedef struct cl_enginefuncs_s
 	void	(*pfnWeaponAnim)( int iAnim, int body );
 	float	(*pfnRandomFloat)( float flLow, float flHigh );
 	int	(*pfnRandomLong)( int lLow, int lHigh );
+	float	(*pfnSharedRandomFloat)( unsigned int seed, float flLow, float flHigh );
 	void	(*pfnHookEvent)( const char *name, void ( *pfnEvent )( struct event_args_s *args ));
 
 	int	(*Con_IsVisible) ( void );
@@ -308,7 +309,7 @@ typedef struct cl_enginefuncs_s
 	int		(*pfnFilteredClientCmd)( const char *cmd );
 } cl_enginefunc_t;
 
-#define CLDLL_INTERFACE_VERSION	7
+#define CLDLL_INTERFACE_VERSION	8
 
 #ifdef __cplusplus
 }
