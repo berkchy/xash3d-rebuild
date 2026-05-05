@@ -3839,6 +3839,19 @@ static float GAME_EXPORT CL_SharedRandomFloat( unsigned int seed, float low, flo
 	return low + ((float)( CL_SharedRandomNext() & 65535 ) / 65536.0f) * range;
 }
 
+static int GAME_EXPORT CL_SharedRandomLong( unsigned int seed, int low, int high )
+{
+	unsigned int range;
+
+	CL_SharedSrand( (int)seed + low + high );
+
+	range = high - low + 1;
+	if( !( range - 1 ))
+		return low;
+
+	return low + ( CL_SharedRandomNext() % range );
+}
+
 static cl_enginefunc_t gEngfuncs =
 {
 	pfnSPR_Load,
@@ -3911,6 +3924,7 @@ static cl_enginefunc_t gEngfuncs =
 	COM_RandomFloat,
 	COM_RandomLong,
 	CL_SharedRandomFloat,
+	CL_SharedRandomLong,
 	pfnHookEvent,
 	Con_Visible,
 	pfnGetGameDirectory,
