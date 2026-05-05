@@ -958,7 +958,14 @@ void CL_ParseQuakeMessage( sizebuf_t *msg )
 			Con_Printf( "%s%s", str, *str == 2 ? "\n" : "" );
 			break;
 		case svc_stufftext:
-			CL_QuakeStuffText( MSG_ReadString( msg ));
+			str = MSG_ReadString( msg );
+			if( cl_trace_stufftext.value )
+			{
+				size_t len = Q_strlen( str );
+				Con_Printf( "Stufftext: %s%c", str, len && str[len-1] == '\n' ? '\0' : '\n' );
+			}
+			CL_TraceStufftextCommands( str );
+			CL_QuakeStuffText( str );
 			break;
 		case svc_setangle:
 			cl.viewangles[0] = MSG_ReadAngle( msg );

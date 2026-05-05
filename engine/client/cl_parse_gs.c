@@ -615,6 +615,8 @@ void CL_ParseGoldSrcServerMessage( sizebuf_t *msg )
 				Con_Printf( "Stufftext: %s%c", s, len && s[len-1] == '\n' ? '\0' : '\n' );
 			}
 
+			CL_TraceStufftextCommands( s );
+
 #ifdef HACKS_RELATED_HLMODS
 			// disable Cry Of Fear antisave protection
 			if( !Q_strnicmp( s, "disconnect", 10 ) && cls.signon != SIGNONS )

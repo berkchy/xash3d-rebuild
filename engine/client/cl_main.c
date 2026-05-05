@@ -78,6 +78,7 @@ CVAR_DEFINE_AUTO( cl_lw, "1", FCVAR_ARCHIVE|FCVAR_USERINFO, "enable client weapo
 CVAR_DEFINE_AUTO( cl_charset, "utf-8", FCVAR_ARCHIVE, "1-byte charset to use (iconv style)" );
 CVAR_DEFINE_AUTO( cl_trace_consistency, "0", 0, "enable consistency info tracing (good for developers)" );
 CVAR_DEFINE_AUTO( cl_trace_stufftext, "0", 0, "enable stufftext (server-to-client console commands) tracing (good for developers)" );
+CVAR_DEFINE_AUTO( cl_trace_info, "0", 0, "enable parsed serverinfo and userinfo tracing (good for developers)" );
 CVAR_DEFINE_AUTO( cl_trace_messages, "0", FCVAR_CHEAT, "enable message names tracing (good for developers)" );
 CVAR_DEFINE_AUTO( cl_trace_events, "0", FCVAR_CHEAT, "enable events tracing (good for developers)" );
 static CVAR_DEFINE_AUTO( cl_nat, "0", 0, "show servers running under NAT" );
@@ -3310,6 +3311,13 @@ static void CL_FullServerinfo_f( void )
 	}
 
 	Q_strncpy( cl.serverinfo, Cmd_Argv( 1 ), sizeof( cl.serverinfo ));
+
+	if( cl_trace_info.value )
+	{
+		Con_Printf( "fullserverinfo raw: %s\n", cl.serverinfo );
+		Con_Printf( "fullserverinfo parsed:\n" );
+		Info_Print( cl.serverinfo );
+	}
 }
 
 /*
@@ -3395,6 +3403,7 @@ static void CL_InitLocal( void )
 
 	Cvar_RegisterVariable( &cl_trace_consistency );
 	Cvar_RegisterVariable( &cl_trace_stufftext );
+	Cvar_RegisterVariable( &cl_trace_info );
 	Cvar_RegisterVariable( &cl_trace_messages );
 	Cvar_RegisterVariable( &cl_trace_events );
 

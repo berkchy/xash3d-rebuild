@@ -1459,6 +1459,69 @@ void CL_RegisterUserMessage( sizebuf_t *msg, connprotocol_t proto )
 	CL_LinkUserMessage( pszName, svc_num, size );
 }
 
+static qboolean CL_IsStufftextSeparator( const char ch )
+{
+	return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == ';';
+}
+
+void CL_TraceStufftextCommands( const char *text )
+{
+	const char *s = text;
+
+	if( !cl_trace_info.value || !COM_CheckString( text ))
+		return;
+
+	while( *s )
+	{
+		char cmd[128];
+		size_t i = 0;
+		qboolean quoted = false;
+
+		while( *s && CL_IsStufftextSeparator( *s ))
+			s++;
+
+		if( !*s )
+			break;
+
+		while( s[i] && !CL_IsStufftextSeparator( s[i] ) && s[i] != '"' && i < sizeof( cmd ) - 1 )
+		{
+			cmd[i] = s[i];
+			i++;
+		}
+		cmd[i] = '\0';
+
+		if( cmd[0] )
+			Con_Printf( "Stufftext command: %s\n", cmd );
+
+		while( *s )
+		{
+			if( *s == '"' )
+				quoted = !quoted;
+			else if( !quoted && ( *s == ';' || *s == '\n' || *s == '\r' ))
+			{
+				s++;
+				break;
+			}
+
+			s++;
+		}
+	}
+}
+
+static void CL_TraceInfoString( const char *label, const char *info )
+{
+	if( !cl_trace_info.value )
+		return;
+
+	Con_Printf( "%s raw: %s\n", label, COM_CheckString( info ) ? info : "(empty)" );
+
+	if( COM_CheckString( info ))
+	{
+		Con_Printf( "%s parsed:\n", label );
+		Info_Print( info );
+	}
+}
+
 /*
 ================
 CL_UpdateUserinfo
@@ -1514,6 +1577,20 @@ void CL_UpdateUserinfo( sizebuf_t *msg, connprotocol_t proto )
 			gameui.playerinfo = *player;
 	}
 
+	if( cl_trace_info.value )
+	{
+		if( active )
+		{
+			Con_Printf( "svc_updateuserinfo slot=%d userid=%d active=1 name=\"%s\" model=\"%s\" topcolor=%d bottomcolor=%d spectator=%d\n",
+				slot, id, player->name, player->model, player->topcolor, player->bottomcolor, player->spectator );
+
+			CL_TraceInfoString( "svc_updateuserinfo", player->userinfo );
+		}
+		else
+		{
+			Con_Printf( "svc_updateuserinfo slot=%d userid=%d active=0\n", slot, id );
+		}
+	}
 
 	if( !active )
 	{
@@ -2624,6 +2701,8 @@ void CL_ParseServerMessage( sizebuf_t *msg )
 				size_t len = Q_strlen( s );
 				Con_Printf( "Stufftext: %s%c", s, len && s[len-1] == '\n' ? '\0' : '\n' );
 			}
+
+			CL_TraceStufftextCommands( s );
 
 #ifdef HACKS_RELATED_HLMODS
 			// disable Cry Of Fear antisave protection

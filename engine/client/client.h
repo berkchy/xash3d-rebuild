@@ -696,6 +696,7 @@ extern convar_t	cl_lw;		// local weapons
 extern convar_t	cl_charset;
 extern convar_t	cl_trace_consistency;
 extern convar_t	cl_trace_stufftext;
+extern convar_t	cl_trace_info;
 extern convar_t	cl_trace_messages;
 extern convar_t	cl_trace_events;
 extern convar_t	hud_utf8;
@@ -944,6 +945,7 @@ void CL_ParseUserMessage( sizebuf_t *msg, int svc_num, connprotocol_t proto );
 void CL_ParseFinaleCutscene( sizebuf_t *msg, int level );
 void CL_ParseTextMessage( sizebuf_t *msg );
 void CL_ParseExec( sizebuf_t *msg );
+void CL_TraceStufftextCommands( const char *text );
 void CL_BatchResourceRequest( qboolean initialize );
 int CL_EstimateNeededResources( void );
 
