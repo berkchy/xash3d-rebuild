@@ -55,6 +55,7 @@ static qboolean g_messagemode_privileged = true;
 #define CON_LINES( i )	(con.lines[(con.lines_first + (i)) % con.maxlines])
 #define CON_LINES_COUNT	con.lines_count
 #define CON_LINES_LAST()	CON_LINES( CON_LINES_COUNT - 1 )
+#define CON_WINDOW_MARGIN	8
 
 // console color typeing
 rgba_t g_color_table[8] =
@@ -99,6 +100,14 @@ typedef struct con_history_s
 	int     next; // the last line in the history buffer, not masked
 } con_history_t;
 
+typedef enum
+{
+	CON_HIT_NONE = 0,
+	CON_HIT_TITLE,
+	CON_HIT_CLOSE,
+	CON_HIT_RESIZE
+} con_hitpart_t;
+
 typedef struct
 {
 	qboolean		initialized;
@@ -123,6 +132,21 @@ typedef struct
 
 	// console images
 	int		background;	// console background
+
+	// console window
+	int		window_x;
+	int		window_y;
+	int		window_w;
+	int		window_h;
+	int		window_drag_x;
+	int		window_drag_y;
+	int		window_resize_mouse_x;
+	int		window_resize_mouse_y;
+	int		window_resize_w;
+	int		window_resize_h;
+	qboolean		window_initialized;
+	qboolean		window_dragging;
+	qboolean		window_resizing;
 
 	// console fonts
 	cl_font_t		chars[CON_NUMFONTS];// fonts.wad/font1.fnt
@@ -151,6 +175,9 @@ static console_t		con;
 static void Con_ClearField( field_t *edit );
 static void Field_CharEvent( field_t *edit, int ch );
 static void Con_InvalidateFonts( void );
+static void Con_CloseWindow( void );
+static void Con_WindowEnsureLayout( void );
+static void Con_WindowUpdateInteraction( void );
 
 static void Con_LoadHistory( con_history_t *self );
 static void Con_SaveHistory( con_history_t *self );
@@ -223,6 +250,187 @@ static void Con_ClearTyping( void )
 	Cmd_AutoCompleteClear();
 }
 
+static void Con_WindowMetrics( int *border, int *title, int *padding, int *resize )
+{
+	int fontHeight = con.curFont ? con.curFont->charHeight : 12;
+
+	if( border ) *border = 2;
+	if( title ) *title = Q_max( 26, fontHeight + 12 );
+	if( padding ) *padding = Q_max( 6, fontHeight / 2 );
+	if( resize ) *resize = Q_max( 16, fontHeight + 4 );
+}
+
+static void Con_WindowStopInteraction( void )
+{
+	con.window_dragging = false;
+	con.window_resizing = false;
+}
+
+static void Con_WindowClamp( void )
+{
+	int border, title, padding;
+	int screenWidth = ref.initialized ? refState.width : 640;
+	int screenHeight = ref.initialized ? refState.height : 480;
+	int fontHeight = con.curFont ? con.curFont->charHeight : 12;
+	int minWidth, minHeight;
+	int maxWidth, maxHeight;
+
+	Con_WindowMetrics( &border, &title, &padding, NULL );
+
+	maxWidth = Q_max( 220, screenWidth - CON_WINDOW_MARGIN * 2 );
+	maxHeight = Q_max( title + padding * 2 + fontHeight * 6, screenHeight - CON_WINDOW_MARGIN * 2 );
+	minWidth = Q_min( maxWidth, Q_max( 360, screenWidth / 2 ));
+	minHeight = Q_min( maxHeight, title + padding * 3 + fontHeight * 8 );
+
+	con.window_w = bound( minWidth, con.window_w, maxWidth );
+	con.window_h = bound( minHeight, con.window_h, maxHeight );
+	con.window_x = bound( CON_WINDOW_MARGIN, con.window_x, screenWidth - con.window_w - CON_WINDOW_MARGIN );
+	con.window_y = bound( CON_WINDOW_MARGIN, con.window_y, screenHeight - con.window_h - CON_WINDOW_MARGIN );
+}
+
+static void Con_WindowEnsureLayout( void )
+{
+	int screenWidth = ref.initialized ? refState.width : 640;
+	int screenHeight = ref.initialized ? refState.height : 480;
+
+	if( !con.window_initialized )
+	{
+		int border, title, padding;
+		int fontHeight = con.curFont ? con.curFont->charHeight : 12;
+		int minWidth, minHeight;
+		int maxWidth, maxHeight;
+
+		Con_WindowMetrics( &border, &title, &padding, NULL );
+		maxWidth = Q_max( 220, screenWidth - CON_WINDOW_MARGIN * 2 );
+		maxHeight = Q_max( title + padding * 2 + fontHeight * 6, screenHeight - CON_WINDOW_MARGIN * 2 );
+		minWidth = Q_min( maxWidth, Q_max( 360, screenWidth / 2 ));
+		minHeight = Q_min( maxHeight, title + padding * 3 + fontHeight * 8 );
+
+		con.window_w = bound( minWidth, (int)( screenWidth * 0.78f ), maxWidth );
+		con.window_h = bound( minHeight, (int)( screenHeight * 0.62f ), maxHeight );
+		con.window_x = ( screenWidth - con.window_w ) / 2;
+		con.window_y = Q_max( CON_WINDOW_MARGIN, (int)( screenHeight * 0.08f ));
+
+		if( con.window_y + con.window_h > screenHeight - CON_WINDOW_MARGIN )
+			con.window_y = ( screenHeight - con.window_h ) / 2;
+
+		con.window_initialized = true;
+	}
+
+	Con_WindowClamp();
+}
+
+static void Con_WindowBodyRect( int *x, int *y, int *w, int *h )
+{
+	int border, title;
+
+	Con_WindowEnsureLayout();
+	Con_WindowMetrics( &border, &title, NULL, NULL );
+
+	if( x ) *x = con.window_x + border;
+	if( y ) *y = con.window_y + border + title;
+	if( w ) *w = con.window_w - border * 2;
+	if( h ) *h = con.window_h - title - border * 2;
+}
+
+static void Con_WindowCloseRect( int *x, int *y, int *w, int *h )
+{
+	int border, title, padding;
+	int size;
+
+	Con_WindowEnsureLayout();
+	Con_WindowMetrics( &border, &title, &padding, NULL );
+
+	size = Q_max( 16, title - 8 );
+	size = Q_min( size, title + padding );
+
+	if( x ) *x = con.window_x + con.window_w - border - size - 4;
+	if( y ) *y = con.window_y + border + 3;
+	if( w ) *w = size;
+	if( h ) *h = title - 6;
+}
+
+static qboolean Con_WindowPointInRect( int x, int y, int rx, int ry, int rw, int rh )
+{
+	return x >= rx && y >= ry && x < rx + rw && y < ry + rh;
+}
+
+static con_hitpart_t Con_WindowHitTest( int mouseX, int mouseY )
+{
+	int closeX, closeY, closeW, closeH;
+	int border, title, resize;
+	int resizeX, resizeY;
+	int titleWidth;
+
+	Con_WindowEnsureLayout();
+	Con_WindowMetrics( &border, &title, NULL, &resize );
+
+	if( !Con_WindowPointInRect( mouseX, mouseY, con.window_x, con.window_y, con.window_w, con.window_h ))
+		return CON_HIT_NONE;
+
+	Con_WindowCloseRect( &closeX, &closeY, &closeW, &closeH );
+	if( Con_WindowPointInRect( mouseX, mouseY, closeX, closeY, closeW, closeH ))
+		return CON_HIT_CLOSE;
+
+	resizeX = con.window_x + con.window_w - border - resize;
+	resizeY = con.window_y + con.window_h - border - resize;
+	if( Con_WindowPointInRect( mouseX, mouseY, resizeX, resizeY, resize, resize ))
+		return CON_HIT_RESIZE;
+
+	titleWidth = Q_max( 0, con.window_w - border * 2 - closeW - 8 );
+
+	if( Con_WindowPointInRect( mouseX, mouseY, con.window_x + border, con.window_y + border, titleWidth, title ))
+	{
+		return CON_HIT_TITLE;
+	}
+
+	return CON_HIT_NONE;
+}
+
+static void Con_CloseWindow( void )
+{
+	Con_WindowStopInteraction();
+
+	if( cls.state == ca_active && !cl.background )
+		Key_SetKeyDest( key_game );
+	else UI_SetActiveMenu( true );
+}
+
+static void Con_WindowUpdateInteraction( void )
+{
+	int mouseX, mouseY;
+
+	if( cls.key_dest != key_console )
+	{
+		Con_WindowStopInteraction();
+		return;
+	}
+
+	if( !con.window_dragging && !con.window_resizing )
+		return;
+
+	if( !Key_IsDown( K_MOUSE1 ))
+	{
+		Con_WindowStopInteraction();
+		return;
+	}
+
+	Platform_GetMousePos( &mouseX, &mouseY );
+
+	if( con.window_dragging )
+	{
+		con.window_x = mouseX - con.window_drag_x;
+		con.window_y = mouseY - con.window_drag_y;
+	}
+	else if( con.window_resizing )
+	{
+		con.window_w = con.window_resize_w + ( mouseX - con.window_resize_mouse_x );
+		con.window_h = con.window_resize_h + ( mouseY - con.window_resize_mouse_y );
+	}
+
+	Con_WindowClamp();
+}
+
 /*
 ================
 Con_MessageMode_f
@@ -270,6 +478,7 @@ void Con_ToggleConsole_f( void )
 
 	Con_ClearTyping();
 	Con_ClearNotify();
+	Con_WindowStopInteraction();
 
 	if( cls.key_dest == key_console )
 	{
@@ -279,6 +488,7 @@ void Con_ToggleConsole_f( void )
 	}
 	else
 	{
+		Con_WindowEnsureLayout();
 		UI_SetActiveMenu( false );
 		Key_SetKeyDest( key_console );
 	}
@@ -456,13 +666,16 @@ If the line width has changed, reformat the buffer.
 static void Con_CheckResize( void )
 {
 	int	charWidth = 8;
+	int	bodyWidth = ref.initialized ? refState.width : 640;
 	int	i, width;
 
 	if( con.curFont && con.curFont->hFontTexture )
 		charWidth = con.curFont->charWidths['O'] - 1;
 
-	width = ( refState.width / charWidth ) - 2;
-	if( !ref.initialized ) width = (640 / 5);
+	Con_WindowBodyRect( NULL, NULL, &bodyWidth, NULL );
+	width = ( bodyWidth / charWidth ) - 4;
+	if( !ref.initialized ) width = ( 640 / 5 );
+	width = Q_max( 16, width );
 
 	if( width == con.linewidth )
 		return;
@@ -1271,11 +1484,11 @@ static void Field_CharEvent( field_t *edit, int ch )
 Field_DrawInputLine
 ==================
 */
-static void Field_DrawInputLine( int x, int y, const field_t *edit )
+static void Field_DrawInputLine( int x, int y, const field_t *edit, const rgba_t color )
 {
 	int curPos;
 	char str[MAX_SYSPATH];
-	const byte *colorDefault = g_color_table[ColorIndex( COLOR_DEFAULT )];
+	const byte *colorDefault = color ? color : g_color_table[ColorIndex( COLOR_DEFAULT )];
 	const int prestep = bound( 0, edit->scroll, sizeof( edit->buffer ) - 1 );
 	const int drawLen = bound( 0, edit->widthInChars, sizeof( str ));
 	const int cursorCharPos = bound( 0, edit->cursor - prestep, sizeof( str ));
@@ -1496,9 +1709,38 @@ void Key_Console( int key )
 	// or both Back(Select)/Start buttons for everyone else
 	if( key == K_BACK_BUTTON || key == K_START_BUTTON || key == K_ESCAPE )
 	{
-		if( cls.state == ca_active && !cl.background )
-			Key_SetKeyDest( key_game );
-		else UI_SetActiveMenu( true );
+		Con_CloseWindow();
+		return;
+	}
+
+	if( key == K_MOUSE1 )
+	{
+		int mouseX, mouseY;
+
+		Platform_GetMousePos( &mouseX, &mouseY );
+		Con_WindowStopInteraction();
+
+		switch( Con_WindowHitTest( mouseX, mouseY ))
+		{
+		case CON_HIT_CLOSE:
+			Con_CloseWindow();
+			return;
+		case CON_HIT_TITLE:
+			con.window_dragging = true;
+			con.window_drag_x = mouseX - con.window_x;
+			con.window_drag_y = mouseY - con.window_y;
+			return;
+		case CON_HIT_RESIZE:
+			con.window_resizing = true;
+			con.window_resize_mouse_x = mouseX;
+			con.window_resize_mouse_y = mouseY;
+			con.window_resize_w = con.window_w;
+			con.window_resize_h = con.window_h;
+			return;
+		default:
+			break;
+		}
+
 		return;
 	}
 
@@ -1665,17 +1907,14 @@ Con_DrawInput
 The input line scrolls horizontally if typing goes beyond the right edge
 ================
 */
-static void Con_DrawInput( int lines )
+static void Con_DrawInput( int x, int y, const rgba_t color )
 {
-	int	y;
-
 	// don't draw anything (always draw if not active)
 	if( cls.key_dest != key_console || !con.curFont )
 		return;
 
-	y = lines - ( con.curFont->charHeight * 2 );
-	CL_DrawCharacter( con.curFont->charWidths[' '], y, ']', g_color_table[7], con.curFont, 0 );
-	Field_DrawInputLine(  con.curFont->charWidths[' ']*2, y, &con.input );
+	CL_DrawCharacter( x, y, ']', color, con.curFont, 0 );
+	Field_DrawInputLine( x + con.curFont->charWidths[' '] * 2, y, &con.input, color );
 }
 
 /*
@@ -1807,7 +2046,7 @@ static void Con_DrawNotify( void )
 		Con_DrawStringLen( buf, &len, NULL );
 		Con_DrawString( x, y, buf, g_color_table[7] );
 
-		Field_DrawInputLine( x + len, y, &con.chat );
+		Field_DrawInputLine( x + len, y, &con.chat, g_color_table[7] );
 	}
 
 	ref.dllFuncs.Color4ub( 255, 255, 255, 255 );
@@ -1822,19 +2061,15 @@ If alpha is 0, the line is not drawn, but still wrapped and its height
 returned.
 ================
 */
-static int Con_DrawConsoleLine( int y, int lineno )
+static int Con_DrawConsoleLine( int x, int y, int top, const rgba_t color, int lineno )
 {
 	con_lineinfo_t	*li = &CON_LINES( lineno );
 
 	if( !li || !li->start || *li->start == '\1' )
 		return 0;	// this string will be shown only at notify
 
-	if( y >= con.curFont->charHeight )
-	{
-		float x = con.curFont->charWidths[' '];
-
-		CL_DrawString( x, y, li->start, g_color_table[7], con.curFont, FONT_DRAW_UTF8 );
-	}
+	if( y >= top )
+		CL_DrawString( x, y, li->start, color, con.curFont, FONT_DRAW_UTF8 );
 
 	return con.curFont->charHeight;
 }
@@ -1879,74 +2114,139 @@ Draws the console with the solid background
 */
 static void Con_DrawSolidConsole( int lines )
 {
-	int	i, x, y;
-	float	fraction;
-	int	start;
-	int	stringLen, width = 0, charH;
-	string	curbuild;
-	byte	color[4];
+	int x, y, w, h;
+	int i, drawX, drawY;
+	int border, title, padding, resize;
+	int titleX, titleY, titleW, titleH;
+	int bodyX, bodyY, bodyW, bodyH;
+	int contentX, contentY, contentW;
+	int closeX, closeY, closeW, closeH;
+	int dividerY, inputY, inputHeight;
+	int fpsY;
+	float fraction;
+	con_hitpart_t hover = CON_HIT_NONE;
+	rgba_t titleColor = { 229, 232, 220, 255 };
+	rgba_t textColor = { 218, 224, 210, 255 };
 
 	if( lines <= 0 ) return;
 
-	// draw the background
-	ref.dllFuncs.GL_SetRenderMode( kRenderNormal );
-	ref.dllFuncs.Color4ub( 255, 255, 255, 255 ); // to prevent grab color from screenfade
-	if( refState.width * 3 / 4 < refState.height && lines >= refState.height )
-		ref.dllFuncs.R_DrawStretchPic( 0, lines - refState.height, refState.width, refState.height - refState.width * 3 / 4, 0, 0, 1, 1, R_GetBuiltinTexture( REF_BLACK_TEXTURE) );
-	ref.dllFuncs.R_DrawStretchPic( 0, lines - refState.width * 3 / 4, refState.width, refState.width * 3 / 4, 0, 0, 1, 1, con.background );
+	Con_WindowEnsureLayout();
+	Con_WindowMetrics( &border, &title, &padding, &resize );
+
+	fraction = bound( 0.0f, lines / (float)Q_max( con.window_h, 1 ), 1.0f );
+	titleColor[3] = (byte)( fraction * 255.0f );
+	textColor[3] = (byte)( fraction * 255.0f );
+	x = con.window_x;
+	y = con.window_y;
+	w = con.window_w;
+	h = con.window_h;
+	titleX = x + border;
+	titleY = y + border;
+	titleW = w - border * 2;
+	titleH = title;
+	bodyX = x + border;
+	bodyY = titleY + titleH;
+	bodyW = w - border * 2;
+	bodyH = h - titleH - border * 2;
+
+	if( cls.key_dest == key_console )
+	{
+		int mouseX, mouseY;
+
+		Platform_GetMousePos( &mouseX, &mouseY );
+		hover = Con_WindowHitTest( mouseX, mouseY );
+	}
+
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, x + 4, y + 4, w, h, 0, 0, 0, (byte)( fraction * 96.0f ));
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, x, y, w, h, 56, 64, 50, (byte)( fraction * 248.0f ));
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, x + 1, y + 1, w - 2, h - 2, 72, 82, 65, (byte)( fraction * 255.0f ));
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, titleX, titleY, titleW, titleH, 96, 110, 82, (byte)( fraction * 255.0f ));
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, bodyX, bodyY, bodyW, bodyH, 38, 47, 37, (byte)( fraction * 240.0f ));
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, x + 2, y + 2, w - 4, 1, 166, 178, 144, (byte)( fraction * 255.0f ));
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, x + 2, y + 2, 1, h - 4, 166, 178, 144, (byte)( fraction * 255.0f ));
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, x + 1, y + h - 2, w - 2, 1, 22, 28, 20, (byte)( fraction * 255.0f ));
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, x + w - 2, y + 1, 1, h - 2, 22, 28, 20, (byte)( fraction * 255.0f ));
+
+	ref.dllFuncs.GL_SetRenderMode( kRenderTransTexture );
+	ref.dllFuncs.Color4ub( 126, 139, 109, (byte)( fraction * 64.0f ));
+	ref.dllFuncs.R_DrawStretchPic( bodyX, bodyY, bodyW, bodyH, 0, 0, 1, 1, con.background );
+	ref.dllFuncs.Color4ub( 255, 255, 255, 255 );
 
 	if( !con.curFont || !host.allow_console )
 		return; // nothing to draw
 
-	// draw current version
-	memcpy( color, g_color_table[7], sizeof( color ));
+	Con_WindowCloseRect( &closeX, &closeY, &closeW, &closeH );
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, closeX, closeY, closeW, closeH,
+		hover == CON_HIT_CLOSE ? 135 : 103,
+		hover == CON_HIT_CLOSE ? 116 : 97,
+		hover == CON_HIT_CLOSE ? 80 : 68,
+		(byte)( fraction * 255.0f ));
 
-	Q_snprintf( curbuild, MAX_STRING, XASH_ENGINE_NAME " %i/" XASH_VERSION " (%s-%s build %i)", PROTOCOL_VERSION, Q_buildos(), Q_buildarch(), Q_buildnum( ));
+	Con_DrawString( titleX + padding, titleY + ( titleH - con.curFont->charHeight ) / 2, "Console", titleColor );
+	Con_DrawString( closeX + ( closeW - con.curFont->charWidths['X'] ) / 2,
+		closeY + ( closeH - con.curFont->charHeight ) / 2, "X", titleColor );
 
-	Con_DrawStringLen( curbuild, &stringLen, &charH );
+	contentX = bodyX + padding;
+	contentY = bodyY + padding;
+	contentW = bodyW - padding * 2;
+	inputHeight = con.curFont->charHeight + padding * 2 + 2;
+	inputHeight = Q_min( inputHeight, Q_max( con.curFont->charHeight + 8, bodyH / 3 ));
+	dividerY = bodyY + bodyH - inputHeight - 1;
+	inputY = dividerY + padding + ( inputHeight - con.curFont->charHeight ) / 2 - 1;
 
-	start = refState.width - stringLen;
-	fraction = lines / (float)refState.height;
-	color[3] = Q_min( fraction * 2.0f, 1.0f ) * 255; // fadeout version number
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, bodyX + 1, dividerY, bodyW - 2, 1, 122, 136, 103, (byte)( fraction * 255.0f ));
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, bodyX + 1, dividerY + 1, bodyW - 2, 1, 26, 32, 24, (byte)( fraction * 255.0f ));
 
-	Con_DrawString( start, 0, curbuild, color );
-
-	// draw the text
+	// Keep the original console buffer/history behaviour, but render it inside a framed window.
 	if( CON_LINES_COUNT > 0 )
 	{
-		int	ymax = lines - (con.curFont->charHeight * 2.0f);
+		int textTop = contentY;
+		int textBottom = dividerY - padding - con.curFont->charHeight;
 		int	lastline;
 
 		Con_LastVisibleLine( &lastline );
-		y = ymax - con.curFont->charHeight;
+		drawY = textBottom;
 
 		if( con.backscroll )
 		{
-			start = con.curFont->charWidths[' ']; // offset one space at left screen side
+			int arrowStep = Q_max( con.curFont->charWidths[' '] * 4, 12 );
 
 			// draw red arrows to show the buffer is backscrolled
-			for( x = 0; x < con.linewidth; x += 4 )
-				CL_DrawCharacter( ( x + 1 ) * start, y, '^', g_color_table[1], con.curFont, 0 );
-			y -= con.curFont->charHeight;
+			for( drawX = contentX; drawX < contentX + contentW - con.curFont->charWidths[' ']; drawX += arrowStep )
+				CL_DrawCharacter( drawX, drawY, '^', g_color_table[1], con.curFont, 0 );
+			drawY -= con.curFont->charHeight;
 		}
-		x = lastline;
+		i = lastline;
 
 		while( 1 )
 		{
-			y -= Con_DrawConsoleLine( y, x );
+			drawY -= Con_DrawConsoleLine( contentX, drawY, textTop, textColor, i );
 
 			// top of console buffer or console window
-			if( x == 0 || y < con.curFont->charHeight )
+			if( i == 0 || drawY < textTop )
 				break;
-			x--;
+			i--;
 		}
 	}
 
 	// draw the input prompt, user text, and cursor if desired
-	Con_DrawInput( lines );
+	Con_DrawInput( contentX, inputY, textColor );
 
-	y = lines - ( con.curFont->charHeight * 1.2f );
-	SCR_DrawFPS( Q_max( y, 4 )); // to avoid to hide fps counter
+	for( i = 0; i < 3; i++ )
+	{
+		int gripSize = 5 + i * 4;
+		int gripX = x + w - border - resize + i * 4;
+		int gripY = y + h - border - 6;
+
+		ref.dllFuncs.FillRGBA( kRenderTransTexture, gripX, gripY - gripSize, 2, gripSize,
+			hover == CON_HIT_RESIZE ? 210 : 170,
+			hover == CON_HIT_RESIZE ? 218 : 180,
+			hover == CON_HIT_RESIZE ? 194 : 160,
+			(byte)( fraction * 200.0f ));
+	}
+
+	fpsY = Q_min( refState.height - con.curFont->charHeight - 4, y + h + 4 );
+	SCR_DrawFPS( Q_max( fpsY, 4 ));
 
 	ref.dllFuncs.Color4ub( 255, 255, 255, 255 );
 }
@@ -2078,18 +2378,12 @@ void Con_RunConsole( void )
 	float	lines_per_frame;
 
 	Con_SetColor( );
+	Con_WindowEnsureLayout();
+	Con_WindowUpdateInteraction();
 
 	// decide on the destination height of the console
 	if( host.allow_console && cls.key_dest == key_console )
-	{
-#if XASH_MOBILE_PLATFORM
-		con.showlines = refState.height; // always full screen on mobile devices
-#else
-		if( cls.state < ca_active || cl.first_frame )
-			con.showlines = refState.height;	// full screen
-		else con.showlines = (refState.height >> 1);	// half screen
-#endif
-	}
+		con.showlines = con.window_h;
 	else con.showlines = 0; // none visible
 
 	lines_per_frame = fabs( scr_conspeed.value ) * host.realframetime;
@@ -2300,6 +2594,7 @@ void Con_FastClose( void )
 {
 	Con_ClearField( &con.input );
 	Con_ClearNotify();
+	Con_WindowStopInteraction();
 	con.showlines = 0;
 	con.vislines = 0;
 }
