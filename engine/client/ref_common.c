@@ -11,14 +11,14 @@ ref_globals_t refState;
 static const char* r_skyBoxSuffix[SKYBOX_MAX_SIDES] = { "rt", "bk", "lf", "ft", "up", "dn" };
 
 CVAR_DEFINE_AUTO( gl_vsync, "1", FCVAR_ARCHIVE,  "enable vertical syncronization" );
-CVAR_DEFINE_AUTO( r_showtextures, "0", FCVAR_CHEAT, "show all uploaded textures" );
+CVAR_DEFINE_AUTO( r_showtextures, "0", FCVAR_ARCHIVE, "show all uploaded textures" );
 CVAR_DEFINE_AUTO( r_adjust_fov, "1", FCVAR_ARCHIVE, "making FOV adjustment for wide-screens" );
 CVAR_DEFINE_AUTO( r_decals, "4096", FCVAR_ARCHIVE, "sets the maximum number of decals" );
 CVAR_DEFINE_AUTO( gl_msaa_samples, "0", FCVAR_GLCONFIG, "samples number for multisample anti-aliasing" );
 CVAR_DEFINE_AUTO( gl_clear, "0", FCVAR_ARCHIVE, "clearing screen after each frame" );
 CVAR_DEFINE_AUTO( r_showtree, "0", FCVAR_ARCHIVE, "build the graph of visible BSP tree" );
 static CVAR_DEFINE_AUTO( r_refdll, "", FCVAR_RENDERINFO, "choose renderer implementation, if supported" );
-static CVAR_DEFINE_AUTO( r_refdll_loaded, "", FCVAR_READ_ONLY, "currently loaded renderer" );
+static CVAR_DEFINE_AUTO( r_refdll_loaded, "", FCVAR_ARCHIVE, "currently loaded renderer" );
 static CVAR_DEFINE_AUTO( r_pvs_radius, "0.1", FCVAR_ARCHIVE, "increase amount of potentially visible leaves by this radius" );
 
 // there is no need to expose whole host and cl structs into the renderer
@@ -445,7 +445,7 @@ static void R_UnloadProgs( void )
 	// deinitialize renderer
 	ref.dllFuncs.R_Shutdown();
 
-	Cvar_FullSet( "host_refloaded", "0", FCVAR_READ_ONLY );
+	Cvar_FullSet( "host_refloaded", "0", FCVAR_ARCHIVE );
 
 	Cvar_Unlink( FCVAR_RENDERINFO | FCVAR_GLCONFIG | FCVAR_REFDLL );
 	Cmd_Unlink( CMD_REFDLL );
@@ -521,7 +521,7 @@ static qboolean R_LoadProgs( const char *name )
 		return false;
 	}
 
-	Cvar_FullSet( "host_refloaded", "1", FCVAR_READ_ONLY );
+	Cvar_FullSet( "host_refloaded", "1", FCVAR_ARCHIVE );
 	ref.initialized = true;
 
 	// initialize TriAPI callbacks
@@ -591,7 +591,7 @@ static qboolean R_LoadRenderer( const char *refopt, qboolean quiet )
 		return false;
 	}
 
-	Cvar_FullSet( "r_refdll_loaded", refopt, FCVAR_READ_ONLY );
+	Cvar_FullSet( "r_refdll_loaded", refopt, FCVAR_ARCHIVE );
 	Con_Reportf( "Renderer %s initialized\n", refdll );
 
 	return true;
@@ -695,10 +695,10 @@ qboolean R_Init( void )
 
 	// cvars that are expected to exist
 	Cvar_Get( "r_speeds", "0", FCVAR_ARCHIVE, "shows renderer speeds" );
-	Cvar_Get( "r_fullbright", "0", FCVAR_CHEAT, "disable lightmaps, get fullbright for entities" );
+	Cvar_Get( "r_fullbright", "0", FCVAR_ARCHIVE, "disable lightmaps, get fullbright for entities" );
 	Cvar_Get( "r_norefresh", "0", 0, "disable 3D rendering (use with caution)" );
 	Cvar_Get( "r_dynamic", "1", FCVAR_ARCHIVE, "allow dynamic lighting (dlights, lightstyles)" );
-	Cvar_Get( "r_lightmap", "0", FCVAR_CHEAT, "lightmap debugging tool" );
+	Cvar_Get( "r_lightmap", "0", FCVAR_ARCHIVE, "lightmap debugging tool" );
 	Cvar_Get( "tracerred", "0.8", 0, "tracer red component weight ( 0 - 1.0 )" );
 	Cvar_Get( "tracergreen", "0.8", 0, "tracer green component weight ( 0 - 1.0 )" );
 	Cvar_Get( "tracerblue", "0.4", 0, "tracer blue component weight ( 0 - 1.0 )" );
@@ -713,7 +713,7 @@ qboolean R_Init( void )
 	// cvars that are expected to exist by client.dll
 	// refdll should just get pointer to them
 	Cvar_Get( "r_lighting_modulate", "0.6", FCVAR_ARCHIVE, "compatibility cvar, does nothing" );
-	Cvar_Get( "r_drawentities", "1", FCVAR_CHEAT, "render entities" );
+	Cvar_Get( "r_drawentities", "1", FCVAR_ARCHIVE, "render entities" );
 	Cvar_Get( "cl_himodels", "1", FCVAR_ARCHIVE, "draw high-resolution player models in multiplayer" );
 
 	// cvars are created, execute video config
