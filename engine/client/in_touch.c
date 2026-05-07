@@ -2072,9 +2072,15 @@ int IN_TouchEvent( touchEventType type, int fingerID, float x, float y, float dx
 	if( cls.key_dest != key_game && !touch_in_menu.value )
 	{
 		touch.move_finger = touch.resize_finger = touch.look_finger = touch.wheel_finger = -1;
+		if( cls.key_dest == key_console )
+		{
+			Con_TouchEvent( type, x, y, dx, dy );
+			return 0;
+		}
+
 		// Hack for keyboard, hope it help
 		// a1ba: this is absolutely horrible
-		if( cls.key_dest == key_console || cls.key_dest == key_message )
+		if( cls.key_dest == key_message )
 		{
 			static float x1 = 0.0f;
 			x1 += dx;
@@ -2085,42 +2091,17 @@ int IN_TouchEvent( touchEventType type, int fingerID, float x, float y, float dx
 				x1 = 0.0f;
 			}
 
-			if( cls.key_dest == key_console )
-			{
-				static float y1 = 0;
-				y1 += dy;
-				if( dy > 0.4f )
-					Con_Bottom();
-
-				if( y1 > 0.01f )
-				{
-					Con_PageUp( 1 );
-					y1 = 0;
-				}
-				if( y1 < -0.01f )
-				{
-					Con_PageDown( 1 );
-					y1 = 0;
-				}
-			}
-
 			// exit of console area
 			if( type == event_down && x < 0.1f && y > 0.9f )
 			{
-				if( cls.key_dest == key_console )
-					Key_Console( K_ESCAPE );
-				else
-					Key_Message( K_ESCAPE );
+				Key_Message( K_ESCAPE );
 				return 0;
 			}
 
 			// swipe from edge to exit console/chat
 			if(( x > 0.7f && x1 < -0.1f ) || ( x < 0.3f && x1 > 0.1f ))
 			{
-				if( cls.key_dest == key_console )
-					Key_Console( K_ESCAPE );
-				else
-					Key_Message( K_ESCAPE );
+				Key_Message( K_ESCAPE );
 				x1 = 0.0f;
 				return 0;
 			}

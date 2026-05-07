@@ -1130,6 +1130,7 @@ void Con_FastClose( void );
 void Con_Bottom( void );
 void Con_PageDown( int lines );
 void Con_PageUp( int lines );
+qboolean Con_TouchEvent( int type, float x, float y, float dx, float dy );
 
 //
 // s_main.c

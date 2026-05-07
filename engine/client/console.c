@@ -147,6 +147,15 @@ typedef struct
 	qboolean		window_initialized;
 	qboolean		window_dragging;
 	qboolean		window_resizing;
+	qboolean		touch_active;
+	qboolean		touch_moved;
+	qboolean		touch_started_in_window;
+	qboolean		touch_started_in_input;
+	qboolean		touch_started_in_text;
+	int		touch_last_x;
+	int		touch_last_y;
+	int		touch_scroll_accum;
+	con_hitpart_t		touch_hitpart;
 
 	// console fonts
 	cl_font_t		chars[CON_NUMFONTS];// fonts.wad/font1.fnt
@@ -333,6 +342,43 @@ static void Con_WindowBodyRect( int *x, int *y, int *w, int *h )
 	if( h ) *h = con.window_h - title - border * 2;
 }
 
+static void Con_WindowTextRect( int *x, int *y, int *w, int *h )
+{
+	int bodyX, bodyY, bodyW, bodyH;
+	int padding;
+	int inputHeight;
+
+	Con_WindowBodyRect( &bodyX, &bodyY, &bodyW, &bodyH );
+	Con_WindowMetrics( NULL, NULL, &padding, NULL );
+
+	inputHeight = con.curFont ? con.curFont->charHeight + padding * 2 + 2 : padding * 4 + 14;
+	inputHeight = Q_min( inputHeight, Q_max( ( con.curFont ? con.curFont->charHeight : 14 ) + 8, bodyH / 3 ));
+
+	if( x ) *x = bodyX + padding;
+	if( y ) *y = bodyY + padding;
+	if( w ) *w = bodyW - padding * 2;
+	if( h ) *h = Q_max( 0, bodyH - inputHeight - padding * 2 - 1 );
+}
+
+static void Con_WindowInputRect( int *x, int *y, int *w, int *h )
+{
+	int bodyX, bodyY, bodyW, bodyH;
+	int padding;
+	int dividerY, inputHeight;
+
+	Con_WindowBodyRect( &bodyX, &bodyY, &bodyW, &bodyH );
+	Con_WindowMetrics( NULL, NULL, &padding, NULL );
+
+	inputHeight = con.curFont ? con.curFont->charHeight + padding * 2 + 2 : padding * 4 + 14;
+	inputHeight = Q_min( inputHeight, Q_max( ( con.curFont ? con.curFont->charHeight : 14 ) + 8, bodyH / 3 ));
+	dividerY = bodyY + bodyH - inputHeight - 1;
+
+	if( x ) *x = bodyX + 1;
+	if( y ) *y = dividerY + 1;
+	if( w ) *w = bodyW - 2;
+	if( h ) *h = inputHeight;
+}
+
 static void Con_WindowCloseRect( int *x, int *y, int *w, int *h )
 {
 	int border, title, padding;
@@ -402,6 +448,7 @@ static void Con_WindowUpdateInteraction( void )
 
 	if( cls.key_dest != key_console )
 	{
+		con.touch_active = false;
 		Con_WindowStopInteraction();
 		return;
 	}
@@ -409,7 +456,7 @@ static void Con_WindowUpdateInteraction( void )
 	if( !con.window_dragging && !con.window_resizing )
 		return;
 
-	if( !Key_IsDown( K_MOUSE1 ))
+	if( !con.touch_active && !Key_IsDown( K_MOUSE1 ))
 	{
 		Con_WindowStopInteraction();
 		return;
@@ -1856,6 +1903,126 @@ void Key_Console( int key )
 	Field_KeyDownEvent( &con.input, key );
 }
 
+qboolean Con_TouchEvent( int type, float x, float y, float dx, float dy )
+{
+	int mouseX, mouseY;
+	int inputX, inputY, inputW, inputH;
+	int textX, textY, textW, textH;
+	int dragDeltaX, dragDeltaY;
+	int scrollStep;
+
+	(void)dx;
+	(void)dy;
+
+	if( cls.key_dest != key_console )
+		return false;
+
+	Con_WindowEnsureLayout();
+
+	mouseX = bound( 0, (int)( x * refState.width ), refState.width - 1 );
+	mouseY = bound( 0, (int)( y * refState.height ), refState.height - 1 );
+
+	Platform_SetMousePos( mouseX, mouseY );
+	Con_WindowInputRect( &inputX, &inputY, &inputW, &inputH );
+	Con_WindowTextRect( &textX, &textY, &textW, &textH );
+
+	switch( type )
+	{
+	case event_down:
+		con.touch_active = true;
+		con.touch_moved = false;
+		con.touch_started_in_window = Con_WindowPointInRect( mouseX, mouseY, con.window_x, con.window_y, con.window_w, con.window_h );
+		con.touch_started_in_input = Con_WindowPointInRect( mouseX, mouseY, inputX, inputY, inputW, inputH );
+		con.touch_started_in_text = Con_WindowPointInRect( mouseX, mouseY, textX, textY, textW, textH );
+		con.touch_last_x = mouseX;
+		con.touch_last_y = mouseY;
+		con.touch_scroll_accum = 0;
+		con.touch_hitpart = Con_WindowHitTest( mouseX, mouseY );
+
+		Con_WindowStopInteraction();
+
+		switch( con.touch_hitpart )
+		{
+		case CON_HIT_TITLE:
+			con.window_dragging = true;
+			con.window_drag_x = mouseX - con.window_x;
+			con.window_drag_y = mouseY - con.window_y;
+			break;
+		case CON_HIT_RESIZE:
+			con.window_resizing = true;
+			con.window_resize_mouse_x = mouseX;
+			con.window_resize_mouse_y = mouseY;
+			con.window_resize_w = con.window_w;
+			con.window_resize_h = con.window_h;
+			break;
+		default:
+			break;
+		}
+
+		return con.touch_started_in_window;
+	case event_motion:
+		if( !con.touch_active )
+			return false;
+
+		dragDeltaX = abs( mouseX - con.touch_last_x );
+		dragDeltaY = abs( mouseY - con.touch_last_y );
+
+		if( dragDeltaX > 3 || dragDeltaY > 3 )
+			con.touch_moved = true;
+
+		if( !con.window_dragging && !con.window_resizing && con.touch_started_in_text && !con.touch_started_in_input )
+		{
+			scrollStep = con.curFont ? Q_max( 6, con.curFont->charHeight / 2 ) : 8;
+			con.touch_scroll_accum += mouseY - con.touch_last_y;
+
+			while( con.touch_scroll_accum >= scrollStep )
+			{
+				Con_PageUp( 1 );
+				con.touch_scroll_accum -= scrollStep;
+			}
+
+			while( con.touch_scroll_accum <= -scrollStep )
+			{
+				Con_PageDown( 1 );
+				con.touch_scroll_accum += scrollStep;
+			}
+
+			if( mouseY - con.touch_last_y > refState.height * 0.12f )
+				Con_Bottom();
+		}
+
+		con.touch_last_x = mouseX;
+		con.touch_last_y = mouseY;
+		return true;
+	case event_up:
+		if( !con.touch_active )
+			return false;
+
+		if( con.touch_hitpart == CON_HIT_CLOSE && !con.touch_moved
+		&& Con_WindowHitTest( mouseX, mouseY ) == CON_HIT_CLOSE )
+		{
+			con.touch_active = false;
+			Con_WindowStopInteraction();
+			Con_CloseWindow();
+			return true;
+		}
+
+		if( !con.touch_moved && con.touch_started_in_window
+		&& con.touch_hitpart != CON_HIT_TITLE && con.touch_hitpart != CON_HIT_RESIZE )
+		{
+			Key_EnableTextInput( true, true );
+		}
+
+		con.touch_active = false;
+		Con_WindowStopInteraction();
+		return con.touch_started_in_window;
+	default:
+		break;
+	}
+
+	return false;
+}
+
 /*
 ================
 Key_Message
@@ -2167,10 +2334,13 @@ static void Con_DrawSolidConsole( int lines )
 	ref.dllFuncs.FillRGBA( kRenderTransTexture, x + 1, y + h - 2, w - 2, 1, 22, 28, 20, (byte)( fraction * 255.0f ));
 	ref.dllFuncs.FillRGBA( kRenderTransTexture, x + w - 2, y + 1, 1, h - 2, 22, 28, 20, (byte)( fraction * 255.0f ));
 
-	ref.dllFuncs.GL_SetRenderMode( kRenderTransTexture );
-	ref.dllFuncs.Color4ub( 126, 139, 109, (byte)( fraction * 64.0f ));
-	ref.dllFuncs.R_DrawStretchPic( bodyX, bodyY, bodyW, bodyH, 0, 0, 1, 1, con.background );
-	ref.dllFuncs.Color4ub( 255, 255, 255, 255 );
+	if( con.background > 0 && cls.state != ca_active && cls.state != ca_cinematic )
+	{
+		ref.dllFuncs.GL_SetRenderMode( kRenderTransTexture );
+		ref.dllFuncs.Color4ub( 126, 139, 109, (byte)( fraction * 64.0f ));
+		ref.dllFuncs.R_DrawStretchPic( bodyX, bodyY, bodyW, bodyH, 0, 0, 1, 1, con.background );
+		ref.dllFuncs.Color4ub( 255, 255, 255, 255 );
+	}
 
 	if( !con.curFont || !host.allow_console )
 		return; // nothing to draw
