@@ -172,7 +172,7 @@ void Info_WriteVars( file_t *f )
 
 		pcvar = Cvar_FindVar( pkey );
 
-		if( !pcvar && pkey[0] != '*' )  // don't store out star keys
+		if( !pcvar )
 			FS_Printf( f, "setinfo \"%s\" \"%s\"\n", pkey, value[valueindex] );
 
 		if( !*s ) return;
@@ -490,12 +490,6 @@ qboolean Info_SetValueForStarKey( char *s, const char *key, const char *value, i
 
 qboolean Info_SetValueForKey( char *s, const char *key, const char *value, int maxsize )
 {
-	if( key[0] == '*' )
-	{
-		Con_Printf( S_ERROR "Can't set *keys\n" );
-		return false;
-	}
-
 	return Info_SetValueForStarKey( s, key, value, maxsize );
 }
 
@@ -510,4 +504,3 @@ qboolean Info_SetValueForKeyf( char *s, const char *key, int maxsize, const char
 
 	return Info_SetValueForKey( s, key, value, maxsize );
 }
-
