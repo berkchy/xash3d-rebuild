@@ -23,6 +23,9 @@ GNU General Public License for more details.
 CVAR_DEFINE_AUTO( scr_centertime, "2.5", 0, "centerprint hold time" );
 CVAR_DEFINE_AUTO( scr_loading, "0", 0, "loading bar progress" );
 CVAR_DEFINE_AUTO( scr_download, "-1", 0, "downloading bar progress" );
+CVAR_DEFINE_AUTO( scr_download_current, "0", 0, "current download bytes" );
+CVAR_DEFINE_AUTO( scr_download_total, "0", 0, "total bytes for current download" );
+CVAR_DEFINE_AUTO( scr_download_speed, "0", 0, "current download speed in bytes per second" );
 CVAR_DEFINE( scr_viewsize, "viewsize", "120", FCVAR_ARCHIVE, "screen size (quake only)" );
 CVAR_DEFINE_AUTO( cl_testlights, "0", FCVAR_CHEAT, "test dynamic lights" );
 CVAR_DEFINE( cl_allow_levelshots, "allow_levelshots", "0", FCVAR_ARCHIVE, "allow engine to use indivdual levelshots instead of 'loading' image" );
@@ -915,6 +918,9 @@ void SCR_Init( void )
 	Cvar_RegisterVariable( &cl_allow_levelshots );
 	Cvar_RegisterVariable( &scr_loading );
 	Cvar_RegisterVariable( &scr_download );
+	Cvar_RegisterVariable( &scr_download_current );
+	Cvar_RegisterVariable( &scr_download_total );
+	Cvar_RegisterVariable( &scr_download_speed );
 	Cvar_RegisterVariable( &cl_testlights );
 	Cvar_RegisterVariable( &cl_envshot_size );
 	Cvar_RegisterVariable( &v_dark );

@@ -55,6 +55,7 @@ typedef struct httpfile_s
 	int downloaded;
 	int lastchecksize;
 	float checktime;
+	float speed;
 	float blocktime;
 	const char *blockreason;
 	qboolean process;
@@ -100,6 +101,13 @@ static int HTTP_FileQueue( httpfile_t *file );
 static int HTTP_FileResolveNS( httpfile_t *file );
 static int HTTP_FileSendRequest( httpfile_t *file );
 static int HTTP_FileDecompress( httpfile_t *file );
+
+static void HTTP_ResetProgressCvars( void )
+{
+	Cvar_SetValue( "scr_download_current", 0.0f );
+	Cvar_SetValue( "scr_download_total", 0.0f );
+	Cvar_SetValue( "scr_download_speed", 0.0f );
+}
 
 /*
 ==============
@@ -205,7 +213,7 @@ static int HTTP_FileQueue( httpfile_t *file )
 	}
 
 	file->pfn_process = HTTP_FileResolveNS;
-	file->blocktime = file->downloaded = file->lastchecksize = file->checktime = 0;
+	file->blocktime = file->downloaded = file->lastchecksize = file->checktime = file->speed = 0;
 	return 1;
 }
 
@@ -840,7 +848,8 @@ static int HTTP_FileProcessStream( httpfile_t *curfile )
 			// as after it will run in same frame
 			if( curfile->checktime > 5 )
 			{
-				float speed = (float)curfile->lastchecksize / ( 5.0f * 1024 );
+				curfile->speed = curfile->checktime > 0.0f ? (float)curfile->lastchecksize / curfile->checktime : 0.0f;
+				float speed = curfile->speed / 1024.0f;
 
 				curfile->checktime = 0;
 				Con_Reportf( "download speed %f KB/s\n", speed );
@@ -910,6 +919,7 @@ Call every frame
 void HTTP_Run( void )
 {
 	httpfile_t *curfile;
+	httpfile_t *progress_file = NULL;
 
 	http.resolving = false;
 	http.progress_count = 0;
@@ -919,8 +929,14 @@ void HTTP_Run( void )
 	{
 		int move_next = 1;
 
+		if( !progress_file && ( curfile->got_response || curfile->size > 0 || curfile->reported_size > 0 ))
+			progress_file = curfile;
+
 		while( move_next > 0 )
 			move_next = curfile->pfn_process( curfile );
+
+		if( curfile->checktime > 0.0f )
+			curfile->speed = (float)curfile->lastchecksize / curfile->checktime;
 
 		if( curfile->blocktime > http_timeout.value )
 		{
@@ -932,6 +948,18 @@ void HTTP_Run( void )
 	// update progress
 	if( !Host_IsDedicated() && http.progress_count != 0 )
 		Cvar_SetValue( "scr_download", http.progress/http.progress_count * 100 );
+
+	if( progress_file )
+	{
+		const int total = progress_file->reported_size > 0 ? progress_file->reported_size : progress_file->size;
+		Cvar_SetValue( "scr_download_current", progress_file->downloaded );
+		Cvar_SetValue( "scr_download_total", total > 0 ? total : 0 );
+		Cvar_SetValue( "scr_download_speed", progress_file->speed > 0.0f ? progress_file->speed : 0.0f );
+	}
+	else
+	{
+		HTTP_ResetProgressCvars();
+	}
 
 	HTTP_AutoClean();
 }
