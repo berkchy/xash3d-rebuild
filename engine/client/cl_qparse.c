@@ -197,6 +197,7 @@ static void CL_ParseQuakeServerInfo( sizebuf_t *msg )
 		CL_ClearState ();
 	cl.background = (cls.demonum != -1) ? true : false;
 	cls.state = ca_connected;
+	Cvar_SetValue( "scr_loading", 18.0f );
 
 	// parse protocol version number
 	i = MSG_ReadLong( msg );
@@ -302,7 +303,7 @@ static void CL_ParseQuakeServerInfo( sizebuf_t *msg )
 	if( cls.demoplayback && ( cls.demonum != -1 ))
 		Cvar_Set( "cl_levelshot_name", va( "levelshots/%s_%s", cls.demoname, refState.wideScreen ? "16x9" : "4x3" ));
 	else Cvar_Set( "cl_levelshot_name", va( "levelshots/%s_%s", clgame.mapname, refState.wideScreen ? "16x9" : "4x3" ));
-	Cvar_SetValue( "scr_loading", 0.0f ); // reset progress bar
+	Cvar_SetValue( "scr_loading", 24.0f );
 
 	if(( cl_allow_levelshots.value && !cls.changelevel ) || cl.background )
 	{
@@ -780,6 +781,7 @@ static void CL_ParseQuakeSignon( sizebuf_t *msg )
 	int	i = MSG_ReadByte( msg );
 
 	if( i == 3 ) cls.signon = SIGNONS - 1;
+	Cvar_SetValue( "scr_loading", i >= 3 ? 56.0f : 38.0f );
 	Con_Reportf( "%s: %d\n", __func__, i );
 }
 

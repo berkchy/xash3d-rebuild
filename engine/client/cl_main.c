@@ -262,11 +262,13 @@ void CL_SignonReply( connprotocol_t proto )
 	switch( cls.signon )
 	{
 	case 1:
+		Cvar_SetValue( "scr_loading", 38.0f );
 		CL_ServerCommand( true, proto == PROTO_GOLDSRC ? "sendents" : "begin" );
 		if( host_developer.value >= DEV_EXTENDED )
 			Mem_PrintStats();
 		break;
 	case 2:
+		Cvar_SetValue( "scr_loading", 56.0f );
 		SCR_EndLoadingPlaque();
 		if( cl.proxy_redirect && !cls.spectator )
 			CL_Disconnect();
@@ -1426,6 +1428,7 @@ static void CL_Connect_f( void )
 	cls.spectator = false;
 	cls.signon = 0;
 
+	Cvar_SetValue( "scr_loading", 5.0f );
 	UI_ConnectionProgress_Connect( server );
 }
 
@@ -2370,6 +2373,7 @@ static void CL_ClientConnect( connprotocol_t proto, const char *c, netadr_t from
 	}
 
 	CL_Reconnect( true );
+	Cvar_SetValue( "scr_loading", 10.0f );
 	UI_SetActiveMenu( true );
 }
 
@@ -3139,13 +3143,40 @@ static qboolean CL_ShouldRescanFilesystem( void )
 	return retval;
 }
 
+static void CL_UpdateResourcePrecacheProgress( int completed, int total )
+{
+	if( total <= 0 )
+	{
+		Cvar_SetValue( "scr_loading", 95.0f );
+		return;
+	}
+
+	Cvar_SetValue( "scr_loading", 62.0f + ((float)completed / (float)total ) * 33.0f );
+}
+
 qboolean CL_PrecacheResources( void )
 {
 	resource_t	*pRes;
+	int		totalPending = 0;
+	int		completedPending = 0;
+	const qboolean	showProgress = ( cls.state != ca_active );
 
 	// if we downloaded new WAD files or any other archives they must be added to searchpath
 	if( CL_ShouldRescanFilesystem( ))
 		FS_Rescan_f();
+
+	if( showProgress )
+	{
+		UI_ConnectionProgress_Precache();
+
+		for( pRes = cl.resourcesonhand.pNext; pRes && pRes != &cl.resourcesonhand; pRes = pRes->pNext )
+		{
+			if( !FBitSet( pRes->ucFlags, RES_PRECACHED ))
+				totalPending++;
+		}
+
+		CL_UpdateResourcePrecacheProgress( 0, totalPending );
+	}
 
 	// NOTE: world need to be loaded as first model
 	for( pRes = cl.resourcesonhand.pNext; pRes && pRes != &cl.resourcesonhand; pRes = pRes->pNext )
@@ -3158,6 +3189,11 @@ qboolean CL_PrecacheResources( void )
 
 		cl.models[pRes->nIndex] = Mod_LoadWorld( pRes->szFileName, true );
 		SetBits( pRes->ucFlags, RES_PRECACHED );
+		if( showProgress )
+		{
+			completedPending++;
+			CL_UpdateResourcePrecacheProgress( completedPending, totalPending );
+		}
 		cl.nummodels = 1;
 		break;
 	}
@@ -3173,6 +3209,11 @@ qboolean CL_PrecacheResources( void )
 			cl.models[pRes->nIndex] = Mod_ForName( pRes->szFileName, false, false );
 			cl.nummodels = Q_max( cl.nummodels, pRes->nIndex + 1 );
 			SetBits( pRes->ucFlags, RES_PRECACHED );
+			if( showProgress )
+			{
+				completedPending++;
+				CL_UpdateResourcePrecacheProgress( completedPending, totalPending );
+			}
 
 			if( cl.models[pRes->nIndex] == NULL )
 			{
@@ -3281,6 +3322,11 @@ qboolean CL_PrecacheResources( void )
 		}
 
 		SetBits( pRes->ucFlags, RES_PRECACHED );
+		if( showProgress )
+		{
+			completedPending++;
+			CL_UpdateResourcePrecacheProgress( completedPending, totalPending );
+		}
 	}
 
 	// make sure modelcount is in-range
@@ -3289,6 +3335,9 @@ qboolean CL_PrecacheResources( void )
 
 	if( cls.state != ca_active )
 		S_EndRegistration();
+
+	if( showProgress )
+		Cvar_SetValue( "scr_loading", 95.0f );
 
 	return true;
 }
@@ -3309,6 +3358,7 @@ static void CL_FullServerinfo_f( void )
 	}
 
 	Q_strncpy( cl.serverinfo, Cmd_Argv( 1 ), sizeof( cl.serverinfo ));
+	Cvar_SetValue( "scr_loading", 28.0f );
 
 	{
 		const char *server = Info_ValueForKey( cl.serverinfo, "hostname" );

@@ -24,6 +24,9 @@ GNU General Public License for more details.
 #if XASH_LOW_MEMORY != 2
 int CL_UPDATE_BACKUP = SINGLEPLAYER_BACKUP;
 #endif
+
+static void CL_SetConnectionLoadingProgress( float progress );
+
 /*
 ===============
 CL_UserMsgStub
@@ -228,6 +231,7 @@ void CL_ParseSignon( sizebuf_t *msg, connprotocol_t proto )
 	}
 
 	cls.signon = i;
+	CL_SetConnectionLoadingProgress( i == 1 ? 38.0f : 56.0f );
 	CL_SignonReply( proto );
 }
 
@@ -614,6 +618,8 @@ static void CL_StartResourceDownloading( const char *pszMessage, qboolean bCusto
 
 		cls.state = ca_validate;
 		cls.dl.custom = false;
+		UI_ConnectionProgress_Precache();
+		CL_SetConnectionLoadingProgress( 62.0f );
 	}
 
 	cls.dl.doneregistering = false;
@@ -842,6 +848,11 @@ void CL_ParseFileTransferFailed( sizebuf_t *msg )
 		CL_ProcessFile( false, name );
 }
 
+static void CL_SetConnectionLoadingProgress( float progress )
+{
+	Cvar_SetValue( "scr_loading", bound( 0.0f, progress, 100.0f ));
+}
+
 /*
 =====================================================================
 
@@ -891,6 +902,7 @@ void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 	clgame.dllFuncs.pfnVidInit();
 
 	cls.state = ca_connected;
+	CL_SetConnectionLoadingProgress( 18.0f );
 
 	// parse protocol version number
 	i = MSG_ReadLong( msg );
@@ -1043,7 +1055,7 @@ void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 	if( cls.demoplayback && ( cls.demonum != -1 ))
 		Cvar_Set( "cl_levelshot_name", va( "levelshots/%s_%s", cls.demoname, refState.wideScreen ? "16x9" : "4x3" ));
 	else Cvar_Set( "cl_levelshot_name", va( "levelshots/%s_%s", clgame.mapname, refState.wideScreen ? "16x9" : "4x3" ));
-	Cvar_SetValue( "scr_loading", 0.0f ); // reset progress bar
+	CL_SetConnectionLoadingProgress( 24.0f );
 
 	if(( cl_allow_levelshots.value && !cls.changelevel ) || cl.background )
 	{
@@ -1888,6 +1900,7 @@ void CL_RegisterResources( sizebuf_t *msg, connprotocol_t proto )
 		CL_SendConsistencyInfo( msg, proto );
 
 	// All done precaching.
+	CL_SetConnectionLoadingProgress( 100.0f );
 	cl.worldmodel = CL_ModelHandle( 1 ); // get world pointer
 
 	if( cl.worldmodel && cl.maxclients > 0 )
