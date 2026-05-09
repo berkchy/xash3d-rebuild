@@ -2465,8 +2465,9 @@ void Con_DrawConsole( void )
 	case ca_connecting:
 	case ca_connected:
 	case ca_validate:
-		// force to show console always for -dev 3 and higher
-		Con_DrawSolidConsole( con.vislines );
+		// let connection UI own the screen while joining a server
+		if( !UI_IsVisible() )
+			Con_DrawSolidConsole( con.vislines );
 		break;
 	case ca_active:
 	case ca_cinematic:
