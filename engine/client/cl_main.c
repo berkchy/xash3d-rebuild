@@ -1416,10 +1416,6 @@ static void CL_Connect_f( void )
 	Con_Printf( "server %s\n", server );
 	CL_Disconnect();
 
-	// TESTTEST: a see console during connection
-	UI_SetActiveMenu( false );
-	Key_SetKeyDest( key_console );
-
 	cls.state = ca_connecting;
 	cls.legacymode = proto;
 	Q_strncpy( cls.servername, server, sizeof( cls.servername ));
@@ -1429,6 +1425,8 @@ static void CL_Connect_f( void )
 	cls.passed_bandwidth_test = false;
 	cls.spectator = false;
 	cls.signon = 0;
+
+	UI_ConnectionProgress_Connect( server );
 }
 
 /*
