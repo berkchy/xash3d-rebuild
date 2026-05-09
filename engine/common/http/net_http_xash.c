@@ -848,8 +848,10 @@ static int HTTP_FileProcessStream( httpfile_t *curfile )
 			// as after it will run in same frame
 			if( curfile->checktime > 5 )
 			{
+				float speed;
+
 				curfile->speed = curfile->checktime > 0.0f ? (float)curfile->lastchecksize / curfile->checktime : 0.0f;
-				float speed = curfile->speed / 1024.0f;
+				speed = curfile->speed / 1024.0f;
 
 				curfile->checktime = 0;
 				Con_Reportf( "download speed %f KB/s\n", speed );
