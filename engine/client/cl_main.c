@@ -2370,7 +2370,7 @@ static void CL_ClientConnect( connprotocol_t proto, const char *c, netadr_t from
 	}
 
 	CL_Reconnect( true );
-	UI_SetActiveMenu( cl.background );
+	UI_SetActiveMenu( true );
 }
 
 static void CL_Print( const char *c, const char *args, netadr_t from, sizebuf_t *msg )
@@ -3309,6 +3309,16 @@ static void CL_FullServerinfo_f( void )
 	}
 
 	Q_strncpy( cl.serverinfo, Cmd_Argv( 1 ), sizeof( cl.serverinfo ));
+
+	{
+		const char *server = Info_ValueForKey( cl.serverinfo, "hostname" );
+
+		if( !COM_CheckString( server ))
+			server = Info_ValueForKey( cl.serverinfo, "host" );
+
+		if( COM_CheckString( server ))
+			UI_ConnectionProgress_ParseServerInfo( server );
+	}
 
 	if( cl_trace_info.value )
 	{

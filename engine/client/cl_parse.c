@@ -1023,7 +1023,7 @@ void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 	}
 
 	if( !cls.changedemo )
-		UI_SetActiveMenu( cl.background );
+		UI_SetActiveMenu( true );
 	else if( !cls.demoplayback )
 		Key_SetKeyDest( key_menu );
 

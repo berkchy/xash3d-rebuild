@@ -246,7 +246,7 @@ static void CL_ParseQuakeServerInfo( sizebuf_t *msg )
 	S_StopBackgroundTrack ();
 
 	if( !cls.changedemo )
-		UI_SetActiveMenu( cl.background );
+		UI_SetActiveMenu( true );
 	else if( !cls.demoplayback )
 		Key_SetKeyDest( key_menu );
 
